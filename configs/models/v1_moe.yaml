@@ -1,0 +1,27 @@
+variant: v1_moe
+use_moe: true
+use_mla: false
+use_dsa: false
+use_recurrent: false
+n_experts: 8
+n_active: 2
+n_shared_experts: 1
+router_aux_loss_coef: 0.01
+tie_weights: true
+dropout: 0.0
+bias: false
+notes: >
+  SwiGLU MoE with top-2 routing and one shared expert.
+  Expert width is set so shared + top-2 active FFN FLOPs match the dense FFN.
+
+scales:
+  smoke:
+    n_layer: 4
+    n_embd: 256
+    n_head: 4
+    block_size: 256
+  full:
+    n_layer: 12
+    n_embd: 768
+    n_head: 12
+    block_size: 1024

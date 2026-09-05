@@ -1,0 +1,245 @@
+{
+  "note": "These are short synthetic pilots of the configured shapes, not a multi-billion-token pretrain. device_hours use tok/s measured on this machine (CPU here unless CUDA is available).",
+  "variants": [
+    {
+      "variant": "v0_dense",
+      "scale": "full",
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "accounting": {
+        "total_params": 151881984,
+        "active_params": 151881984,
+        "unique_layers": 12,
+        "executed_layers": 12,
+        "depth_scale": 1.0,
+        "flops_per_token": 303763968.0,
+        "kv_dims_per_token": 18432,
+        "kv_bytes_per_token_fp16": 36864,
+        "kv_bytes_per_token_fp32": 73728,
+        "dsa_index_topk": null,
+        "moe_experts": null,
+        "moe_active": null,
+        "loops": 1,
+        "measured_total_params": 151881984
+      },
+      "throughput": {
+        "steps": 1,
+        "batch_size": 1,
+        "block_size": 1024,
+        "elapsed_s": 0.8396017551422119,
+        "tok_s": 1219.625844906142,
+        "peak_memory_bytes": null,
+        "device": "cpu"
+      },
+      "projected": {
+        "2B": {
+          "tokens": 2000000000,
+          "device_hours": 455.5131050033702
+        },
+        "3B": {
+          "tokens": 3000000000,
+          "device_hours": 683.2696575050553
+        },
+        "5B": {
+          "tokens": 5000000000,
+          "device_hours": 1138.7827625084255
+        }
+      },
+      "error": null,
+      "epistemic": null,
+      "caveat": "device_hours use measured tok/s on this machine. GPU will be much faster than CPU."
+    },
+    {
+      "variant": "v1_moe",
+      "scale": "full",
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "accounting": {
+        "total_params": 321825024,
+        "active_params": 151955712,
+        "unique_layers": 12,
+        "executed_layers": 12,
+        "depth_scale": 1.0,
+        "flops_per_token": 303911424.0,
+        "kv_dims_per_token": 18432,
+        "kv_bytes_per_token_fp16": 36864,
+        "kv_bytes_per_token_fp32": 73728,
+        "dsa_index_topk": null,
+        "moe_experts": 8,
+        "moe_active": 2,
+        "loops": 1,
+        "measured_total_params": 321825024
+      },
+      "throughput": {
+        "steps": 1,
+        "batch_size": 1,
+        "block_size": 1024,
+        "elapsed_s": 0.833867073059082,
+        "tok_s": 1228.0134725111595,
+        "peak_memory_bytes": null,
+        "device": "cpu"
+      },
+      "projected": {
+        "2B": {
+          "tokens": 2000000000,
+          "device_hours": 452.4018408523665
+        },
+        "3B": {
+          "tokens": 3000000000,
+          "device_hours": 678.6027612785498
+        },
+        "5B": {
+          "tokens": 5000000000,
+          "device_hours": 1131.0046021309163
+        }
+      },
+      "error": null,
+      "epistemic": null,
+      "caveat": "device_hours use measured tok/s on this machine. GPU will be much faster than CPU."
+    },
+    {
+      "variant": "v2_moe_mla",
+      "scale": "full",
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "accounting": {
+        "total_params": 312682752,
+        "active_params": 142813440,
+        "unique_layers": 12,
+        "executed_layers": 12,
+        "depth_scale": 1.0,
+        "flops_per_token": 285626880.0,
+        "kv_dims_per_token": 5376,
+        "kv_bytes_per_token_fp16": 10752,
+        "kv_bytes_per_token_fp32": 21504,
+        "dsa_index_topk": null,
+        "moe_experts": 8,
+        "moe_active": 2,
+        "loops": 1,
+        "measured_total_params": 312682752
+      },
+      "throughput": {
+        "steps": 1,
+        "batch_size": 1,
+        "block_size": 1024,
+        "elapsed_s": 0.8519349098205566,
+        "tok_s": 1201.9697610650624,
+        "peak_memory_bytes": null,
+        "device": "cpu"
+      },
+      "projected": {
+        "2B": {
+          "tokens": 2000000000,
+          "device_hours": 462.2042696509097
+        },
+        "3B": {
+          "tokens": 3000000000,
+          "device_hours": 693.3064044763645
+        },
+        "5B": {
+          "tokens": 5000000000,
+          "device_hours": 1155.5106741272741
+        }
+      },
+      "error": null,
+      "epistemic": null,
+      "caveat": "device_hours use measured tok/s on this machine. GPU will be much faster than CPU."
+    },
+    {
+      "variant": "v3_moe_mla_dsa",
+      "scale": "full",
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "accounting": {
+        "total_params": 315042048,
+        "active_params": 145172736,
+        "unique_layers": 12,
+        "executed_layers": 12,
+        "depth_scale": 1.0,
+        "flops_per_token": 290345472.0,
+        "kv_dims_per_token": 6912,
+        "kv_bytes_per_token_fp16": 13824,
+        "kv_bytes_per_token_fp32": 27648,
+        "dsa_index_topk": 128,
+        "moe_experts": 8,
+        "moe_active": 2,
+        "loops": 1,
+        "measured_total_params": 315042048
+      },
+      "throughput": {
+        "steps": 1,
+        "batch_size": 1,
+        "block_size": 1024,
+        "elapsed_s": 0.9564728736877441,
+        "tok_s": 1070.600147866087,
+        "peak_memory_bytes": null,
+        "device": "cpu"
+      },
+      "projected": {
+        "2B": {
+          "tokens": 2000000000,
+          "device_hours": 518.919744839271
+        },
+        "3B": {
+          "tokens": 3000000000,
+          "device_hours": 778.3796172589064
+        },
+        "5B": {
+          "tokens": 5000000000,
+          "device_hours": 1297.2993620981772
+        }
+      },
+      "error": null,
+      "epistemic": null,
+      "caveat": "device_hours use measured tok/s on this machine. GPU will be much faster than CPU."
+    },
+    {
+      "variant": "v4_recurrent",
+      "scale": "full",
+      "device": "cpu",
+      "dtype": "torch.float32",
+      "accounting": {
+        "total_params": 315042048,
+        "active_params": 145172736,
+        "unique_layers": 12,
+        "executed_layers": 20,
+        "depth_scale": 1.6666666666666667,
+        "flops_per_token": 483909120.0,
+        "kv_dims_per_token": 6912,
+        "kv_bytes_per_token_fp16": 13824,
+        "kv_bytes_per_token_fp32": 27648,
+        "dsa_index_topk": 128,
+        "moe_experts": 8,
+        "moe_active": 2,
+        "loops": 2,
+        "measured_total_params": 315042048
+      },
+      "throughput": {
+        "steps": 1,
+        "batch_size": 1,
+        "block_size": 1024,
+        "elapsed_s": 1.507645845413208,
+        "tok_s": 679.20460439391,
+        "peak_memory_bytes": null,
+        "device": "cpu"
+      },
+      "projected": {
+        "2B": {
+          "tokens": 2000000000,
+          "device_hours": 817.9502199507422
+        },
+        "3B": {
+          "tokens": 3000000000,
+          "device_hours": 1226.9253299261134
+        },
+        "5B": {
+          "tokens": 5000000000,
+          "device_hours": 2044.8755498768555
+        }
+      },
+      "error": null,
+      "epistemic": "recurrent_depth_inferred_not_confirmed",
+      "caveat": "device_hours use measured tok/s on this machine. GPU will be much faster than CPU."
+    }
+  ]
+}

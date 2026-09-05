@@ -1,0 +1,34 @@
+variant: v3_moe_mla_dsa
+use_moe: true
+use_mla: true
+use_dsa: true
+use_recurrent: false
+n_experts: 8
+n_active: 2
+n_shared_experts: 1
+router_aux_loss_coef: 0.01
+index_n_heads: 4
+index_head_dim: 32
+dsa_local_window: 16
+tie_weights: true
+dropout: 0.0
+bias: false
+notes: V2 plus a lightweight DSA indexer (top-k + local window).
+
+scales:
+  smoke:
+    n_layer: 4
+    n_embd: 256
+    n_head: 4
+    block_size: 256
+    kv_lora_rank: 32
+    qk_rope_head_dim: 16
+    index_topk: 32
+  full:
+    n_layer: 12
+    n_embd: 768
+    n_head: 12
+    block_size: 1024
+    kv_lora_rank: 64
+    qk_rope_head_dim: 32
+    index_topk: 128

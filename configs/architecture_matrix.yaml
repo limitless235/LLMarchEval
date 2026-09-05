@@ -1,0 +1,84 @@
+# Machine-readable companion to docs/architecture-matrix.md
+# Labels: known | inferred | unknown | not_applicable
+# Do not treat unknown/inferred cells as confirmed internals.
+
+epistemic_rule: >
+  Closed models stay labeled. Implement mechanisms, not clones.
+  Recurrent depth is an Astra hypothesis, not a disclosed architecture.
+
+out_of_scope:
+  - GLM-5.3-Flash hybrid linear attention
+  - GLM-5.3-Flash mHC
+  - MoonViT / multimodal
+  - Kimi agent swarm
+  - Article writing
+  - Cyber-exploit evaluation
+  - Multi-billion-token pretraining in this pass
+
+models:
+  glm-5.3:
+    openness: open_weights
+    notes: Same base architecture as GLM-5.2; 5.3 gains disclosed as post-training.
+    ideas:
+      sparse_moe: { status: known, detail: "~744-753B total, ~40B active, 78L, 256 experts, top-8 + 1 shared" }
+      mla: { status: known, detail: "Multi-head latent attention" }
+      dsa: { status: known, detail: "Dynamic sparse attention indexer on top of MLA" }
+      long_context: { status: known, detail: "1M-token model configuration" }
+      adaptive_compute: { status: known, detail: "Always-on reasoning; effort low/high/max" }
+      recurrent_depth: { status: unknown }
+      post_training_dominates: { status: known, detail: "5.3 uses 5.2 base; improvements from post-training" }
+      safety_routing: { status: inferred, detail: "Partial public discussion of cyber capability from post-training" }
+
+  kimi-k2.5:
+    openness: open_weights
+    notes: MoE + MLA language model with MoonViT (vision out of scope here).
+    ideas:
+      sparse_moe: { status: known, detail: "1T total / 32B active, 61L, 384 experts, top-8 + 1 shared, SwiGLU" }
+      mla: { status: known, detail: "MLA, 256K context" }
+      dsa: { status: not_applicable, detail: "Not the GLM DSA recipe" }
+      long_context: { status: known, detail: "256K" }
+      adaptive_compute: { status: known, detail: "Thinking / Instant modes" }
+      recurrent_depth: { status: unknown }
+      post_training_dominates: { status: known, detail: "Continual pretraining + agentic RL" }
+      safety_routing: { status: inferred, detail: "External evaluations exist; not a disclosed routing wrapper" }
+
+  fable-5:
+    openness: closed
+    notes: Public information is mostly deployment/API behavior, not the transformer internals.
+    ideas:
+      sparse_moe: { status: unknown }
+      mla: { status: unknown }
+      dsa: { status: unknown }
+      long_context: { status: known, detail: "1M context API" }
+      adaptive_compute: { status: known, detail: "Adaptive thinking + effort dial; sampler knobs rejected" }
+      recurrent_depth: { status: unknown }
+      post_training_dominates: { status: inferred, detail: "Wrapper + adaptive reasoning; Mythos shares disclosed as same weights, different policy" }
+      safety_routing: { status: known, detail: "Classifiers route a small slice of traffic to Opus 4.8" }
+
+  gpt-6-astra:
+    openness: closed
+    notes: System card covers capabilities, alignment, monitoring. Recurrent depth is press reporting, not the system card.
+    ideas:
+      sparse_moe: { status: unknown }
+      mla: { status: unknown }
+      dsa: { status: unknown }
+      long_context: { status: known, detail: "Long-context capability disclosed; internals unknown" }
+      adaptive_compute: { status: known, detail: "Reasoning effort" }
+      recurrent_depth: { status: inferred, detail: "Press reporting of constrained recurrent/looped depth; not in the Astra system card" }
+      post_training_dominates: { status: known, detail: "RL reasoning / alignment training disclosed" }
+      safety_routing: { status: known, detail: "CoT monitors, impossible-task and honeypot evaluations" }
+
+lab_mapping:
+  v0_dense: { implements: ["decoder_transformer"], inspired_by: [] }
+  v1_moe: { implements: ["sparse_moe"], inspired_by: ["glm-5.3", "kimi-k2.5"] }
+  v2_moe_mla: { implements: ["sparse_moe", "mla"], inspired_by: ["glm-5.3", "kimi-k2.5"] }
+  v3_moe_mla_dsa: { implements: ["sparse_moe", "mla", "dsa"], inspired_by: ["glm-5.3"] }
+  v4_recurrent:
+    implements: ["sparse_moe", "mla", "dsa", "recurrent_depth"]
+    inspired_by: ["gpt-6-astra"]
+    epistemic: inferred
+    note: Tests the recurrent-depth hypothesis. Not Astra's architecture.
+  effort_dial:
+    implements: ["adaptive_compute"]
+    inspired_by: ["fable-5", "glm-5.3", "kimi-k2.5", "gpt-6-astra"]
+    note: Same weights, different test-time loop / think budget.

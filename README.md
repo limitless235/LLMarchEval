@@ -1,1 +1,96 @@
-# LLMarchEval
+# LLMarchEval — Frontier-SLM lab
+
+A from-scratch PyTorch laboratory for testing whether architectural ideas from
+GLM-5.3, Kimi K2.5, Fable 5, and GPT-6 Astra still do something at SLM scale.
+
+The question this repo answers:
+
+**Which mechanisms survive downscaling — and what measurable side-effects do they have?**
+
+This is not a miniature GLM or Kimi, not a claim about Fable/Astra internals,
+and not the article. Closed-model cells stay labeled in
+[docs/architecture-matrix.md](docs/architecture-matrix.md).
+
+## Variants
+
+| ID | Mechanism | Inspired by (epistemic) |
+| --- | --- | --- |
+| V0 | Dense decoder Transformer + SwiGLU + RoPE | Baseline |
+| V1 | Sparse MoE (8 experts, top-2, 1 shared) | GLM / Kimi — **known** |
+| V2 | V1 + simplified MLA (compressed KV) | GLM / Kimi — **known** |
+| V3 | V2 + DSA indexer (top-k + local window) | GLM — **known** |
+| V4 | V3 + prelude / looped block / coda | Astra recurrent depth — **inferred**, not in the system card |
+
+Fable's **known** public idea used here is an inference **effort dial**
+(`low/medium/high/...` → recurrent loop count), not a guessed layer stack.
+
+Fair comparison: match **active** parameters and training tokens, not total params.
+
+## Scope of this pass
+
+Implemented and validated on tiny data (TinyStories or the bundled corpus).
+
+Designed for a later single-GPU run: ~100–150M **active** params, FineWeb-Edu,
+context 1024, 2–5B tokens. **Not run here.** Use the cost estimator first.
+
+Out of scope: the article, vision, agent swarms, MuonClip, GRPO, 1M context,
+tokenizer training, cyber-exploit evals.
+
+## Setup
+
+```bash
+pip install -e ".[dev]"
+# optional: TinyStories / FineWeb-Edu loaders
+pip install -e ".[data]"
+```
+
+## Tests
+
+```bash
+pytest
+```
+
+## Smoke train (tiny)
+
+Each variant should drop loss on the bundled corpus (TinyStories if installed):
+
+```bash
+python scripts/train.py --train-config configs/smoke.yaml --variant v0_dense
+python scripts/train.py --train-config configs/smoke.yaml --all-variants
+```
+
+Eval probes (needle, routing entropy, loop consistency, effort dial):
+
+```bash
+python scripts/eval.py --variant v3_moe_mla_dsa --train-config configs/smoke.yaml
+```
+
+## Cost estimate (do this before any 150M pretrain)
+
+Runs a few synthetic steps of the **full** shapes (or `--scale smoke` on CPU)
+and writes projected device-hours for 2B / 3B / 5B tokens:
+
+```bash
+python scripts/estimate_cost.py --train-config configs/pilot.yaml --out results/pilot_cost.json
+# CPU-friendly:
+python scripts/estimate_cost.py --scale smoke --steps 2 --out results/pilot_cost_smoke.json
+```
+
+`configs/full_single_gpu.yaml` is the documented 3B-token recipe. Do not launch
+it until the estimate looks acceptable.
+
+## Knobs
+
+All of these are YAML: `n_layer`, `n_embd`, `n_head`, `n_experts`, `n_active`,
+`block_size`, `max_iters`, `tokens_budget`, MLA ranks, DSA `index_topk`,
+recurrent `train_loops` / `eval_loops`.
+
+Model files live in `configs/models/`. Scale blocks are `smoke` and `full`.
+
+## Architecture probes (not a security product)
+
+- MoE: expert utilization and router entropy on clean vs repetitive text
+- DSA: fraction of needle tokens the indexer drops
+- Recurrent: output agreement vs loop count; effort dial on the same weights
+
+No tool-calling agent, no sandbox escape, no exploit tasks.

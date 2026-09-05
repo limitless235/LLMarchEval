@@ -76,6 +76,22 @@ Eval probes (needle, routing entropy, loop consistency, effort dial):
 python scripts/eval.py --variant v3_moe_mla_dsa --train-config configs/smoke.yaml
 ```
 
+## Research experiment harness
+
+Structured, reproducible architecture probes (MoE routing, MLA context, DSA
+needle selection, recurrent loops). Methodology and limitations:
+[`docs/research_experiments.md`](docs/research_experiments.md).
+
+```bash
+python scripts/run_experiment.py moe-routing --device cpu
+python scripts/run_experiment.py mla-context --device cpu --contexts 256 512
+python scripts/run_experiment.py dsa-needle --device cpu --haystack-lens 64 128
+python scripts/run_experiment.py recurrent-loops --device cpu --loops 1 2 3 4
+```
+
+Outputs: `results/experiments/*.json` + `results/experiments/results.jsonl`.
+Do not launch long training from these commands.
+
 
 ## Local 16GB research profile (Mac / unified memory)
 

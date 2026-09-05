@@ -19,3 +19,5 @@ device: auto
 dtype: auto
 seed: 1337
 out_dir: results/pilot
+# Research/comparative short pilot — do not silently substitute smoke corpus.
+allow_dataset_fallback: false

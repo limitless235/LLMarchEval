@@ -60,10 +60,11 @@ def estimate_loss(
     model.eval()
     losses = []
     amp = dtype in {torch.float16, torch.bfloat16} and device.type == "cuda"
+    eval_loops = model.config.eval_loops if model.config.use_recurrent else None
     for _ in range(eval_iters):
         x, y = batcher.get_batch(device)
         with torch.autocast(device_type=device.type, dtype=dtype, enabled=amp):
-            out = model(x, y)
+            out = model(x, y, loops=eval_loops)
         assert out.loss is not None
         losses.append(out.loss.item())
     model.train()
@@ -115,6 +116,7 @@ def train(experiment: ExperimentConfig) -> dict:
     model.train()
     optimizer.zero_grad(set_to_none=True)
     max_iters = int(cfg.max_iters or 0)
+    train_loops = experiment.model.train_loops if experiment.model.use_recurrent else None
     for step in range(max_iters):
         lr = cosine_lr(step, cfg.warmup_iters, max_iters, cfg.lr, cfg.min_lr)
         for group in optimizer.param_groups:
@@ -125,7 +127,7 @@ def train(experiment: ExperimentConfig) -> dict:
         for _ in range(cfg.grad_accum):
             x, y = train_batcher.get_batch(device)
             with torch.autocast(device_type=device.type, dtype=dtype, enabled=amp):
-                out = model(x, y)
+                out = model(x, y, loops=train_loops)
                 assert out.loss is not None
                 total = out.loss
                 if experiment.model.use_moe:

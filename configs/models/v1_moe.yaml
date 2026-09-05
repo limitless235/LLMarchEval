@@ -25,3 +25,5 @@ scales:
     n_embd: 768
     n_head: 12
     block_size: 1024
+    # Same n_inner as V0 full; MoE expert width auto-scales to keep active FFN ≈ dense.
+    n_inner: 2832

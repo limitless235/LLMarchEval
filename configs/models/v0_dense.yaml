@@ -19,3 +19,6 @@ scales:
     n_embd: 768
     n_head: 12
     block_size: 1024
+    # Shrink FFN vs default 4*n_embd so full-scale active params match V2–V4 (±2%).
+    # Prefer shrinking V0/V1 over widening MLA so the KV-compression comparison stays clean.
+    n_inner: 2832

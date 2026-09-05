@@ -94,9 +94,9 @@ class GPT(nn.Module):
             raise ValueError(
                 f"Sequence length {idx.size(1)} exceeds block_size {self.config.block_size}"
             )
-        loop_count = self.config.loops_for_effort(effort, loops)
-        if not self.config.use_recurrent:
-            loop_count = 1
+        loop_count = self.config.loops_for_effort(
+            effort, loops, training=self.training
+        )
 
         x = self.drop(self.wte(idx))
         aux_acc: list[torch.Tensor] = []
@@ -142,7 +142,7 @@ class GPT(nn.Module):
         max_think_tokens: int = 0,
     ) -> torch.Tensor:
         """Greedy-multinomial decode. `effort` maps to recurrent loops (Fable-style dial)."""
-        loop_count = self.config.loops_for_effort(effort, loops)
+        loop_count = self.config.loops_for_effort(effort, loops, training=False)
         extra = max(max_think_tokens, 0)
         for _ in range(max_new_tokens + extra):
             idx_cond = idx[:, -self.config.block_size :]

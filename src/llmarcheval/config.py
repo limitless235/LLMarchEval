@@ -103,15 +103,28 @@ class ModelConfig:
             return self.n_prelude + self.n_recurrent + self.n_coda
         return self.n_layer
 
-    def loops_for_effort(self, effort: str | None = None, loops: int | None = None) -> int:
+    def loops_for_effort(
+        self,
+        effort: str | None = None,
+        loops: int | None = None,
+        *,
+        training: bool = False,
+    ) -> int:
+        """Resolve recurrent loop count.
+
+        Priority: explicit ``loops`` > ``effort`` dial > train/eval default.
+        Non-recurrent models always return 1.
+        """
         if loops is not None:
             return max(int(loops), 1)
-        if effort is None:
-            return self.eval_loops if not self.use_recurrent else self.eval_loops
-        key = effort.lower()
-        if key not in EFFORT_TO_LOOPS:
-            raise ValueError(f"Unknown effort {effort!r}; expected one of {sorted(EFFORT_TO_LOOPS)}")
-        return EFFORT_TO_LOOPS[key]
+        if not self.use_recurrent:
+            return 1
+        if effort is not None:
+            key = effort.lower()
+            if key not in EFFORT_TO_LOOPS:
+                raise ValueError(f"Unknown effort {effort!r}; expected one of {sorted(EFFORT_TO_LOOPS)}")
+            return EFFORT_TO_LOOPS[key]
+        return self.train_loops if training else self.eval_loops
 
 
 @dataclass
@@ -138,6 +151,9 @@ class TrainConfig:
     tokens_budget: int | None = None
     num_workers: int = 0
     compile: bool = False
+    # If False (default), TinyStories/FineWeb load failures raise — no silent smoke corpus.
+    # Smoke configs may set True for offline development only.
+    allow_dataset_fallback: bool = False
 
 
 @dataclass

@@ -25,6 +25,17 @@ Fable's **known** public idea used here is an inference **effort dial**
 (`low/medium/high/...` → recurrent loop count), not a guessed layer stack.
 
 Fair comparison: match **active** parameters and training tokens, not total params.
+Full-scale V0–V4 are kept within ±2% active parameters (V0/V1 FFN width is
+shrunk slightly so MLA’s KV advantage is not erased by widening MLA).
+
+## Accounting caveats
+
+- `flops_per_token` is an analytical proxy (`2 * active_params * depth_scale`),
+  not measured FLOPs. It ignores quadratic attention, DSA indexer cost, and
+  MoE routing. MLA still runs dense QKᵀ in the current forward.
+- `kv_bytes_per_token_*` are theoretical decode-cache layouts. Training does
+  not implement a persistent KV cache.
+- DSA here is selection + masking on dense scores — not a sparse GEMM kernel.
 
 ## Scope of this pass
 

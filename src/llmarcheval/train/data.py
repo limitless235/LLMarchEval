@@ -77,23 +77,39 @@ def load_fineweb_edu(max_docs: int) -> np.ndarray:
     return _tokenize_text("\n\n".join(chunks))
 
 
-def load_tokens(train: TrainConfig, allow_fallback: bool = True) -> tuple[np.ndarray, str]:
+def load_tokens(train: TrainConfig, allow_fallback: bool | None = None) -> tuple[np.ndarray, str]:
+    """Load and tokenize training data.
+
+    Research / comparative runs must set ``allow_dataset_fallback=False`` (the
+    TrainConfig default). Smoke development may opt in to falling back to the
+    bundled corpus when TinyStories/FineWeb are unavailable.
+    """
+    if allow_fallback is None:
+        allow_fallback = train.allow_dataset_fallback
     name = train.dataset.lower()
     if name in {"synthetic", "corpus", "smoke_corpus"}:
         return load_corpus_file(DEFAULT_CORPUS), str(DEFAULT_CORPUS)
     if name == "tinystories":
         try:
-            return load_tinystories(train.max_docs), "roneneldan/TinyStories"
-        except Exception:
+            return load_tinystories(train.max_docs or 2000), "roneneldan/TinyStories"
+        except Exception as exc:
             if not allow_fallback:
-                raise
+                raise RuntimeError(
+                    "Failed to load TinyStories and allow_dataset_fallback=False. "
+                    "Install the [data] extra / network access, or set "
+                    "allow_dataset_fallback: true for smoke-only development."
+                ) from exc
             return load_corpus_file(DEFAULT_CORPUS), f"fallback:{DEFAULT_CORPUS}"
     if name in {"fineweb-edu", "fineweb_edu", "fineweb"}:
         try:
             return load_fineweb_edu(train.max_docs or 200), "HuggingFaceFW/fineweb-edu"
-        except Exception:
+        except Exception as exc:
             if not allow_fallback:
-                raise
+                raise RuntimeError(
+                    "Failed to load FineWeb-Edu and allow_dataset_fallback=False. "
+                    "Install the [data] extra / network access, or set "
+                    "allow_dataset_fallback: true for smoke-only development."
+                ) from exc
             try:
                 return load_tinystories(train.max_docs or 2000), "fallback:tinystories"
             except Exception:

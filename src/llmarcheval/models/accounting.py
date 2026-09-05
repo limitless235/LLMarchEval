@@ -1,4 +1,22 @@
-"""Parameter, FLOP, and KV-cache accounting."""
+"""Parameter, FLOP, and KV-cache accounting.
+
+Caveats (read before citing numbers in results or articles):
+
+1. ``flops_per_token`` is an **analytical proxy**: ``2 * active_params * depth_scale``.
+   It is not measured wall-clock FLOPs. It ignores quadratic attention cost, DSA
+   indexer overhead, and MoE routing overhead. MLA variants report fewer active
+   attention parameters, but the current forward still materializes K/V and runs
+   dense QK^T, so real attention FLOPs are closer to MHA than the proxy suggests.
+
+2. ``kv_bytes_per_token_*`` describe a **theoretical decode-time KV cache layout**
+   (MHA: full K/V; MLA: latent + RoPE dims; DSA: optional indexer K). The training
+   forward does **not** implement a persistent decode KV cache. Do not treat these
+   bytes as measured peak memory.
+
+3. DSA in this lab is **selection + masking** on dense attention scores. There is
+   no sparse GEMM / production DSA kernel, so DSA does not currently provide
+   kernel-level compute savings (and may be slower on CPU/GPU for that reason).
+"""
 
 from __future__ import annotations
 
@@ -94,7 +112,7 @@ def estimate_from_config(config: ModelConfig, loops: int | None = None) -> dict[
         executed = config.n_prelude + config.n_recurrent * loop_count + config.n_coda
     else:
         executed = layers
-    # Inference FLOPs ≈ 2 * active_params * tokens, scaled by executed/unique depth.
+    # Analytical proxy only — see module docstring.
     depth_scale = executed / max(layers, 1)
     flops_per_token = 2.0 * active * depth_scale
 
@@ -106,9 +124,12 @@ def estimate_from_config(config: ModelConfig, loops: int | None = None) -> dict[
         "executed_layers": executed,
         "depth_scale": depth_scale,
         "flops_per_token": flops_per_token,
+        "flops_per_token_is_proxy": True,
         "kv_dims_per_token": kv_dims,
         "kv_bytes_per_token_fp16": kv_dims * 2,
         "kv_bytes_per_token_fp32": kv_dims * 4,
+        "kv_bytes_are_theoretical": True,
+        "dsa_is_mask_only": bool(config.use_dsa),
         "dsa_index_topk": config.index_topk if config.use_dsa else None,
         "moe_experts": config.n_experts if config.use_moe else None,
         "moe_active": config.n_active if config.use_moe else None,
@@ -117,7 +138,11 @@ def estimate_from_config(config: ModelConfig, loops: int | None = None) -> dict[
 
 
 def kv_cache_dims_per_token(config: ModelConfig) -> int:
-    """Cached dims per token across unique layers (loops do not add KV layers)."""
+    """Theoretical cached dims/token across unique layers (loops do not add KV layers).
+
+    Layout estimate for a future decode cache, not a measurement of the current
+    training forward (which does not keep a persistent KV cache).
+    """
     layers = config.unique_layers
     if config.use_mla:
         per_layer = config.kv_lora_rank + config.n_head * config.qk_rope_head_dim

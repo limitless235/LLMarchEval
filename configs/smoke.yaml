@@ -17,3 +17,5 @@ device: auto
 dtype: auto
 seed: 1337
 out_dir: results/smoke
+# Opt-in: allow bundled corpus if TinyStories is unavailable (smoke/dev only).
+allow_dataset_fallback: true

@@ -68,3 +68,39 @@ def test_effort_dial_maps_loops():
     assert probe["high"]["loops"] == 4
     consistency = loop_consistency_probe(model, torch.device("cpu"), loop_counts=(1, 2))
     assert "pairwise" in consistency
+
+
+def test_train_loops_changes_executed_depth():
+    """Changing train_loops must change executed depth in training mode."""
+    cfg = _rec_cfg(train_loops=1, eval_loops=3, n_prelude=1, n_recurrent=1, n_coda=1)
+    model = GPT(cfg)
+    idx = torch.randint(0, cfg.vocab_size, (1, 8))
+
+    model.train()
+    # Explicit train_loops path (matches trainer).
+    out_train = model(idx, loops=cfg.train_loops)
+    assert out_train.stats["loops"] == 1
+    assert out_train.stats["n_blocks_executed"] == 1 + 1 * 1 + 1
+
+    # Default training resolution uses train_loops when loops=None.
+    out_train_default = model(idx)
+    assert out_train_default.stats["loops"] == cfg.train_loops
+
+    model.eval()
+    out_eval = model(idx)
+    assert out_eval.stats["loops"] == cfg.eval_loops
+    assert out_eval.stats["n_blocks_executed"] == 1 + 1 * 3 + 1
+    assert out_eval.stats["n_blocks_executed"] > out_train.stats["n_blocks_executed"]
+
+    # Accounting tracks the same depth change.
+    est1 = estimate_from_config(cfg, loops=1)
+    est3 = estimate_from_config(cfg, loops=3)
+    assert est3["executed_layers"] > est1["executed_layers"]
+
+
+def test_loops_for_effort_uses_train_vs_eval_defaults():
+    cfg = _rec_cfg(train_loops=2, eval_loops=5)
+    assert cfg.loops_for_effort(training=True) == 2
+    assert cfg.loops_for_effort(training=False) == 5
+    assert cfg.loops_for_effort(effort="high", training=True) == 4
+    assert cfg.loops_for_effort(loops=7, training=True) == 7

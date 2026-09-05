@@ -16,16 +16,36 @@ from llmarcheval.train.data import TokenBatcher, load_tokens
 
 
 def auto_device(name: str) -> torch.device:
+    """Resolve device.
+
+    ``auto`` prefers CUDA, then MPS, then CPU.
+    Explicit ``mps`` (local_16gb profile) falls back to CPU with a clear log when
+    MPS is unavailable. FP32 is the supported MPS path; see ``auto_dtype``.
+    """
     if name == "auto":
         if torch.cuda.is_available():
             return torch.device("cuda")
         if torch.backends.mps.is_available():
             return torch.device("mps")
         return torch.device("cpu")
+    if name == "mps":
+        if torch.backends.mps.is_available():
+            return torch.device("mps")
+        print(
+            "MPS unavailable; falling back to CPU "
+            "(local_16gb supports MPS FP32, otherwise CPU).",
+            flush=True,
+        )
+        return torch.device("cpu")
     return torch.device(name)
 
 
 def auto_dtype(name: str, device: torch.device) -> torch.dtype:
+    """Resolve dtype.
+
+    bf16/fp16 autocast is only used on CUDA. The local_16gb profile sets
+    ``dtype: float32``; MPS has no tested mixed-precision path in this repo.
+    """
     if name == "auto":
         if device.type == "cuda" and torch.cuda.is_bf16_supported():
             return torch.bfloat16
@@ -51,6 +71,72 @@ def cosine_lr(step: int, warmup: int, max_steps: int, lr: float, min_lr: float) 
     progress = (step - warmup) / max(max_steps - warmup, 1)
     coeff = 0.5 * (1.0 + math.cos(math.pi * progress))
     return min_lr + coeff * (lr - min_lr)
+
+
+
+def runtime_diagnostics(
+    experiment: ExperimentConfig,
+    device: torch.device,
+    dtype: torch.dtype,
+    accounting: dict,
+) -> dict:
+    """Startup diagnostics. Any memory numbers in ``accounting`` are estimates only."""
+    cfg = experiment.train
+    model_cfg = experiment.model
+    tokens_per_step = cfg.batch_size * model_cfg.block_size * cfg.grad_accum
+    mem = accounting.get("memory_estimate") or {}
+    return {
+        "device": str(device),
+        "dtype": str(dtype).replace("torch.", ""),
+        "total_params": accounting.get("measured_total_params", accounting.get("total_params")),
+        "active_params": accounting["active_params"],
+        "context_length": model_cfg.block_size,
+        "batch_size": cfg.batch_size,
+        "grad_accum": cfg.grad_accum,
+        "estimated_tokens_per_step": tokens_per_step,
+        "configured_training_steps": cfg.max_iters,
+        "allow_dataset_fallback": cfg.allow_dataset_fallback,
+        "estimated_optimizer_memory_bytes": mem.get("estimated_optimizer_memory_bytes"),
+        "estimated_attention_score_bytes": mem.get("estimated_attention_score_bytes"),
+        "memory_figures_are_estimates": True,
+        "mps_fp32_policy": (
+            "FP32 is the supported default for MPS in local_16gb; "
+            "bf16/fp16 autocast is CUDA-only in this repository."
+        ),
+    }
+
+
+def print_runtime_diagnostics(diag: dict) -> None:
+    print("=== runtime diagnostics ===", flush=True)
+    for key in (
+        "device",
+        "dtype",
+        "total_params",
+        "active_params",
+        "context_length",
+        "batch_size",
+        "grad_accum",
+        "estimated_tokens_per_step",
+        "configured_training_steps",
+        "allow_dataset_fallback",
+    ):
+        print(f"  {key}: {diag[key]}", flush=True)
+    opt = diag.get("estimated_optimizer_memory_bytes")
+    attn = diag.get("estimated_attention_score_bytes")
+    if opt is not None:
+        print(
+            f"  estimated_optimizer_memory_bytes: {opt} "
+            f"({opt / 1e9:.3f} GB analytical, not measured)",
+            flush=True,
+        )
+    if attn is not None:
+        print(
+            f"  estimated_attention_score_bytes: {attn} "
+            f"({attn / 1e6:.1f} MB analytical, not measured)",
+            flush=True,
+        )
+    print(f"  note: {diag['mps_fp32_policy']}", flush=True)
+    print("=== end diagnostics ===", flush=True)
 
 
 @torch.no_grad()
@@ -100,8 +186,13 @@ def train(experiment: ExperimentConfig) -> dict:
     out_dir = Path(cfg.out_dir) / experiment.model.variant
     out_dir.mkdir(parents=True, exist_ok=True)
     metrics_path = out_dir / "metrics.jsonl"
-    accounting = summarize_model(model, experiment.model)
+    accounting = summarize_model(model, experiment.model, batch_size=cfg.batch_size)
     (out_dir / "accounting.json").write_text(json.dumps(accounting, indent=2), encoding="utf-8")
+    diagnostics = runtime_diagnostics(experiment, device, dtype, accounting)
+    (out_dir / "runtime_diagnostics.json").write_text(
+        json.dumps(diagnostics, indent=2), encoding="utf-8"
+    )
+    print_runtime_diagnostics(diagnostics)
 
     amp = dtype in {torch.float16, torch.bfloat16} and device.type == "cuda"
     use_fp16_scaler = dtype == torch.float16 and device.type == "cuda"
@@ -200,6 +291,7 @@ def train(experiment: ExperimentConfig) -> dict:
         "elapsed_s": elapsed,
         "tok_s": tokens_seen / max(elapsed, 1e-6),
         "accounting": accounting,
+        "runtime_diagnostics": diagnostics,
         "history": history,
     }
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")

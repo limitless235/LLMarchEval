@@ -20,6 +20,13 @@ scales:
     n_embd: 256
     n_head: 4
     block_size: 256
+  local_16gb:
+    n_layer: 8
+    n_embd: 384
+    n_head: 6
+    block_size: 512
+    # Same n_inner as V0 local_16gb; MoE expert width auto-scales for active FFN ≈ dense.
+    n_inner: 1428
   full:
     n_layer: 12
     n_embd: 768

@@ -51,6 +51,10 @@ def test_train_configs():
     smoke = load_train_config("configs/smoke.yaml")
     pilot = load_train_config("configs/pilot.yaml")
     full = load_train_config("configs/full_single_gpu.yaml")
+    local = load_train_config("configs/local_16gb.yaml")
     assert smoke.scale == "smoke"
     assert pilot.scale == "full" and pilot.max_iters <= 50
     assert full.tokens_budget == 3_000_000_000
+    assert local.scale == "local_16gb"
+    assert local.allow_dataset_fallback is False
+    assert local.dtype in {"float32", "fp32"}

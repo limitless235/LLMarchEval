@@ -20,6 +20,13 @@ scales:
     block_size: 256
     kv_lora_rank: 32
     qk_rope_head_dim: 16
+  local_16gb:
+    n_layer: 8
+    n_embd: 384
+    n_head: 6
+    block_size: 512
+    kv_lora_rank: 32
+    qk_rope_head_dim: 16
   full:
     n_layer: 12
     n_embd: 768

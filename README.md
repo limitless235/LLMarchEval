@@ -76,6 +76,26 @@ Eval probes (needle, routing entropy, loop consistency, effort dial):
 python scripts/eval.py --variant v3_moe_mla_dsa --train-config configs/smoke.yaml
 ```
 
+
+## Local 16GB research profile (Mac / unified memory)
+
+Config: [`configs/local_16gb.yaml`](configs/local_16gb.yaml). Details:
+[`docs/local_16gb.md`](docs/local_16gb.md).
+
+- ~37M active params, context 512, batch 1, grad accum 8, **FP32**
+- MPS if available (else CPU with an explicit log); **no silent dataset fallback**
+- Same tokenizer/dataset/optim/LR/budget across V0–V4 for mechanism comparison
+- Apple unified memory is shared with the OS — estimates ≠ measurements
+
+```bash
+# Short offline validation (not a research run):
+python scripts/validate_local_16gb.py
+
+# Short research-shaped run (needs TinyStories):
+python scripts/train.py --train-config configs/local_16gb.yaml --variant v0_dense --max-iters 50
+```
+
+
 ## Cost estimate (do this before any 150M pretrain)
 
 Runs a few synthetic steps of the **full** shapes (or `--scale smoke` on CPU)
@@ -96,7 +116,7 @@ All of these are YAML: `n_layer`, `n_embd`, `n_head`, `n_experts`, `n_active`,
 `block_size`, `max_iters`, `tokens_budget`, MLA ranks, DSA `index_topk`,
 recurrent `train_loops` / `eval_loops`.
 
-Model files live in `configs/models/`. Scale blocks are `smoke` and `full`.
+Model files live in `configs/models/`. Scale blocks are `smoke`, `local_16gb`, and `full`.
 
 ## Architecture probes (not a security product)
 

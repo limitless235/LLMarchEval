@@ -24,6 +24,15 @@ scales:
     kv_lora_rank: 32
     qk_rope_head_dim: 16
     index_topk: 32
+  local_16gb:
+    n_layer: 8
+    n_embd: 384
+    n_head: 6
+    block_size: 512
+    kv_lora_rank: 32
+    qk_rope_head_dim: 16
+    # Keep ~1/8 of context selected (same rule as smoke/full).
+    index_topk: 64
   full:
     n_layer: 12
     n_embd: 768

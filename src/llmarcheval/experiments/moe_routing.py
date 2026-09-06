@@ -77,6 +77,21 @@ def _routing_metrics(stats: dict, n_experts: int) -> dict[str, Any]:
     }
 
 
+def _load_checkpoint(model: torch.nn.Module, ckpt: str | Path, device: torch.device) -> dict[str, Any]:
+    """Load weights using the established trainer/eval checkpoint schema."""
+    ckpt_path = Path(ckpt)
+    blob = torch.load(ckpt_path, map_location=device)
+    if not isinstance(blob, dict) or "model" not in blob:
+        raise ValueError(f"Checkpoint {ckpt_path} missing required 'model' state dict")
+    model.load_state_dict(blob["model"])
+    step = blob.get("step")
+    return {
+        "path": str(ckpt_path),
+        "name": ckpt_path.name,
+        "step": int(step) if step is not None else None,
+    }
+
+
 @torch.no_grad()
 def run_moe_routing_experiment(
     *,
@@ -87,6 +102,7 @@ def run_moe_routing_experiment(
     train_config: str = "configs/smoke.yaml",
     out_dir: str | Path = "results/experiments",
     write: bool = True,
+    ckpt: str | Path | None = None,
 ) -> dict[str, Any]:
     set_seed(seed)
     exp = load_probe_experiment(variant, train_config=train_config, scale=scale)
@@ -95,6 +111,9 @@ def run_moe_routing_experiment(
     device = resolve_device(device_name)
     dtype = resolve_dtype("float32", device)
     model = build_model(exp.model, device, dtype)
+    checkpoint_meta: dict[str, Any] | None = None
+    if ckpt is not None:
+        checkpoint_meta = _load_checkpoint(model, ckpt, device)
     model.eval()
     params = parameter_block(model, exp.model)
 
@@ -111,6 +130,16 @@ def run_moe_routing_experiment(
         tokens_processed += int(x.numel())
     wall = time.perf_counter() - t0
 
+    notes = [
+        "Offline deterministic corpora; no network required.",
+        "Expert counts accumulate across MoE layers in the forward merge.",
+        "Do not interpret routing skew as a security finding.",
+    ]
+    if checkpoint_meta is None:
+        notes.append("Fresh model initialization (no checkpoint).")
+    else:
+        notes.append(f"Weights loaded from checkpoint {checkpoint_meta['name']}.")
+
     record = base_record(
         experiment="moe_routing",
         variant=variant,
@@ -122,18 +151,19 @@ def run_moe_routing_experiment(
         context_length=exp.model.block_size,
         wall_clock_s=wall,
         tokens_processed=tokens_processed,
+        training_steps=checkpoint_meta.get("step") if checkpoint_meta else None,
         loss_metrics={"per_regime_nll": losses},
         metrics={
             "regimes": regime_metrics,
+            "checkpoint": checkpoint_meta,
             "interpretation": "Architecture routing diagnostic only; not a security evaluation.",
         },
-        notes=[
-            "Offline deterministic corpora; no network required.",
-            "Expert counts accumulate across MoE layers in the forward merge.",
-            "Do not interpret routing skew as a security finding.",
-        ],
+        notes=notes,
     )
     if write:
-        path = write_result(record, out_dir)
+        stem = f"moe_routing_{variant}_{seed}"
+        if checkpoint_meta is not None:
+            stem = f"{stem}_{Path(checkpoint_meta['name']).stem}"
+        path = write_result(record, out_dir, stem=stem)
         record["output_path"] = str(path)
     return record

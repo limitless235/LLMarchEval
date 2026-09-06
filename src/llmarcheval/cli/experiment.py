@@ -30,6 +30,12 @@ def main(argv: list[str] | None = None) -> None:
     moe = sub.add_parser("moe-routing", help="MoE routing probe across text regimes")
     _add_common(moe)
     moe.add_argument("--variant", type=str, default="v1_moe")
+    moe.add_argument(
+        "--ckpt",
+        type=str,
+        default=None,
+        help="Optional trained checkpoint (expects keys: model, config, step)",
+    )
 
     mla = sub.add_parser("mla-context", help="MLA vs MHA context scaling probe")
     _add_common(mla)
@@ -66,7 +72,7 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     if args.command == "moe-routing":
-        record = run_moe_routing_experiment(variant=args.variant, **common)
+        record = run_moe_routing_experiment(variant=args.variant, ckpt=args.ckpt, **common)
     elif args.command == "mla-context":
         record = run_mla_context_experiment(
             variants=args.variants,

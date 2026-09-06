@@ -3,6 +3,9 @@
 Backward-compatible with existing trainer checkpoints that only store
 ``{"model", "config", "step"}``. New checkpoints add optimizer/RNG/metadata
 fields without renaming the original keys.
+
+Trained-checkpoint loading reconstructs architecture from ``config.model``
+(authoritative). Callers must not inject unrelated default/smoke dimensions.
 """
 
 from __future__ import annotations
@@ -14,13 +17,31 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from llmarcheval.config import ExperimentConfig, ModelConfig, load_experiment, variant_config_path
+from llmarcheval.config import ExperimentConfig, ModelConfig, TrainConfig, _apply_fields
 from llmarcheval.models.transformer import GPT
 
 # Bump only when the on-disk schema becomes incompatible with prior loaders.
 CHECKPOINT_VERSION = 2
 
 REQUIRED_KEYS = ("model",)
+
+# Core fields required to rebuild the exact trained architecture.
+_CORE_ARCH_KEYS = (
+    "variant",
+    "vocab_size",
+    "n_embd",
+    "n_head",
+    "block_size",
+    "use_moe",
+    "use_mla",
+    "use_dsa",
+    "use_recurrent",
+)
+
+_MOE_ARCH_KEYS = ("n_experts", "n_active", "n_shared_experts")
+_MLA_ARCH_KEYS = ("kv_lora_rank", "qk_rope_head_dim")
+_DSA_ARCH_KEYS = ("index_n_heads", "index_head_dim", "index_topk", "dsa_local_window")
+_RECURRENT_ARCH_KEYS = ("n_prelude", "n_recurrent", "n_coda")
 
 
 def capture_rng_state() -> dict[str, Any]:
@@ -163,6 +184,55 @@ def checkpoint_meta(blob: dict[str, Any], path: str | Path) -> dict[str, Any]:
     }
 
 
+def _missing_architecture_keys(model_raw: dict[str, Any]) -> list[str]:
+    """Return architecture keys absent from a checkpoint ``config.model`` dict."""
+    missing = [key for key in _CORE_ARCH_KEYS if key not in model_raw or model_raw[key] is None]
+    if model_raw.get("use_recurrent"):
+        missing.extend(key for key in _RECURRENT_ARCH_KEYS if key not in model_raw or model_raw[key] is None)
+    elif "n_layer" not in model_raw or model_raw["n_layer"] is None:
+        missing.append("n_layer")
+    if model_raw.get("use_moe"):
+        missing.extend(key for key in _MOE_ARCH_KEYS if key not in model_raw or model_raw[key] is None)
+    if model_raw.get("use_mla"):
+        missing.extend(key for key in _MLA_ARCH_KEYS if key not in model_raw or model_raw[key] is None)
+    if model_raw.get("use_dsa"):
+        missing.extend(key for key in _DSA_ARCH_KEYS if key not in model_raw or model_raw[key] is None)
+    # Preserve order while de-duplicating.
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for key in missing:
+        if key not in seen:
+            seen.add(key)
+            ordered.append(key)
+    return ordered
+
+
+def model_config_from_checkpoint(blob: dict[str, Any]) -> ModelConfig:
+    """Reconstruct ``ModelConfig`` from checkpoint-stored architecture metadata.
+
+    The checkpoint's ``config.model`` is the source of truth. Missing required
+    fields raise rather than falling back to smoke/default dimensions.
+    """
+    cfg = blob.get("config")
+    if not isinstance(cfg, dict) or not isinstance(cfg.get("model"), dict):
+        raise ValueError(
+            "Checkpoint lacks authoritative architecture metadata under config.model; "
+            "cannot reconstruct the trained model. Legacy checkpoints must include "
+            "{model, config, step} with a complete config.model matching the trained "
+            "architecture (hidden size, layers, heads, MoE/MLA/DSA/recurrent fields, "
+            "vocab_size, block_size)."
+        )
+    model_raw = cfg["model"]
+    missing = _missing_architecture_keys(model_raw)
+    if missing:
+        raise ValueError(
+            "Checkpoint config.model is insufficient to reconstruct the exact "
+            f"architecture; missing required fields: {missing}. Refusing to build a "
+            "different (e.g. smoke/default) model."
+        )
+    return _apply_fields(ModelConfig, model_raw)
+
+
 def experiment_from_checkpoint(
     blob: dict[str, Any],
     *,
@@ -170,34 +240,38 @@ def experiment_from_checkpoint(
     scale: str | None = None,
     variant: str | None = None,
 ) -> ExperimentConfig:
-    """Rebuild ExperimentConfig from checkpoint metadata, falling back to YAML."""
-    cfg = blob.get("config")
-    chosen_variant = variant or blob.get("variant")
-    if isinstance(cfg, dict) and "model" in cfg and "train" in cfg:
-        from llmarcheval.config import ModelConfig, TrainConfig, _apply_fields
+    """Rebuild ExperimentConfig using checkpoint architecture as source of truth.
 
-        model = _apply_fields(ModelConfig, cfg["model"])
+    Model dimensions always come from ``config.model``. Train settings come from
+    the checkpoint when present, otherwise from an optional ``train_config`` YAML
+    (dataset/device overrides only — never used to replace model architecture).
+    """
+    model = model_config_from_checkpoint(blob)
+    if variant is not None:
+        model.variant = variant
+
+    cfg = blob.get("config") if isinstance(blob.get("config"), dict) else {}
+    train: TrainConfig
+    if train_config is not None:
+        from llmarcheval.config import load_train_config
+
+        train = load_train_config(train_config)
+    elif isinstance(cfg.get("train"), dict):
         train = _apply_fields(TrainConfig, cfg["train"])
-        if train_config is not None:
-            from llmarcheval.config import load_train_config
-
-            train = load_train_config(train_config)
-        if scale is not None:
-            train.scale = scale
-        if chosen_variant is not None:
-            model.variant = chosen_variant
-        return ExperimentConfig(
-            model=model,
-            train=train,
-            model_path=str(cfg.get("model_path", "")),
-            train_path=str(cfg.get("train_path", "")),
+    else:
+        raise ValueError(
+            "Checkpoint lacks config.train and no train_config= was provided; "
+            "cannot rebuild ExperimentConfig. Architecture was found in config.model "
+            "but training hyperparameters are missing."
         )
-    if chosen_variant is None:
-        raise ValueError("Checkpoint lacks config/variant; pass variant= explicitly")
-    from llmarcheval.config import CONFIGS_DIR, load_experiment
-
-    train_path = Path(train_config) if train_config else CONFIGS_DIR / "smoke.yaml"
-    return load_experiment(variant_config_path(chosen_variant), train_path, scale=scale)
+    if scale is not None:
+        train.scale = scale
+    return ExperimentConfig(
+        model=model,
+        train=train,
+        model_path=str(cfg.get("model_path", "")),
+        train_path=str(cfg.get("train_path", "")),
+    )
 
 
 def load_model_from_checkpoint(
@@ -213,26 +287,16 @@ def load_model_from_checkpoint(
 ) -> tuple[GPT, ExperimentConfig, dict[str, Any]]:
     """Generic V0–V4 checkpoint load via the existing GPT builder path.
 
-    Prefer an explicit ``model_cfg`` (research harness) so architecture YAML wins;
-    otherwise reconstruct from checkpoint config.
+    Architecture is always reconstructed from the checkpoint's stored
+    ``config.model``. The optional ``model_cfg`` argument is accepted for API
+    compatibility but is ignored when checkpoint metadata is present — callers
+    must not override trained dimensions with smoke/default YAML.
     """
+    del model_cfg  # Checkpoint architecture is authoritative; do not use caller dims.
     blob = load_checkpoint_blob(path, map_location=device)
-    if model_cfg is not None:
-        exp = ExperimentConfig(model=model_cfg)
-        if isinstance(blob.get("config"), dict) and "train" in blob["config"]:
-            try:
-                exp = experiment_from_checkpoint(
-                    blob, train_config=train_config, scale=scale, variant=variant or model_cfg.variant
-                )
-                exp.model = model_cfg
-            except Exception:
-                exp = ExperimentConfig(model=model_cfg)
-        else:
-            exp = ExperimentConfig(model=model_cfg)
-    else:
-        exp = experiment_from_checkpoint(
-            blob, train_config=train_config, scale=scale, variant=variant
-        )
+    exp = experiment_from_checkpoint(
+        blob, train_config=train_config, scale=scale, variant=variant
+    )
     model = GPT(exp.model).to(device)
     if dtype is not None and dtype != torch.float32 and device.type == "cuda":
         model = model.to(dtype=dtype)
@@ -248,7 +312,12 @@ def load_weights_into_model(
     *,
     strict: bool = True,
 ) -> dict[str, Any]:
-    """Load only weights into an already-built model (experiment harness path)."""
+    """Load only weights into an already-built model (experiment harness path).
+
+    Prefer ``load_model_from_checkpoint`` when the model was not already built
+    from the checkpoint's stored architecture — loading into a differently sized
+    model will fail under ``strict=True``.
+    """
     blob = load_checkpoint_blob(path, map_location=device)
     apply_model_state(model, blob, strict=strict)
     return checkpoint_meta(blob, path)
@@ -266,6 +335,7 @@ __all__ = [
     "load_checkpoint_blob",
     "load_model_from_checkpoint",
     "load_weights_into_model",
+    "model_config_from_checkpoint",
     "restore_rng_state",
     "resume_start_step",
     "save_checkpoint",

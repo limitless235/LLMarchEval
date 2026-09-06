@@ -14,7 +14,6 @@ from typing import Any, Sequence
 
 import torch
 
-from llmarcheval.train.checkpoint import load_weights_into_model
 from llmarcheval.experiments.common import (
     base_record,
     build_model,
@@ -30,6 +29,7 @@ from llmarcheval.experiments.common import (
     synchronize,
     write_result,
 )
+from llmarcheval.train.checkpoint import load_checkpoint_blob, load_weights_into_model, model_config_from_checkpoint
 
 DEFAULT_CONTEXTS = (256, 512, 1024, 2048)
 
@@ -47,12 +47,19 @@ def _run_one(
     steps: int = 2,
     ckpt: str | Path | None = None,
 ) -> dict[str, Any]:
-    exp = load_probe_experiment(variant, train_config=train_config, scale=scale)
-    cfg = deepcopy(exp.model)
-    cfg.block_size = int(context_length)
-    model = build_model(cfg, device, dtype)
     if ckpt is not None:
+        # Rebuild from checkpoint architecture; only extend block_size for the sweep
+        # (block_size does not affect weight shapes).
+        blob = load_checkpoint_blob(ckpt, map_location=device)
+        cfg = deepcopy(model_config_from_checkpoint(blob))
+        cfg.block_size = max(int(cfg.block_size), int(context_length))
+        model = build_model(cfg, device, dtype)
         load_weights_into_model(model, ckpt, device)
+    else:
+        exp = load_probe_experiment(variant, train_config=train_config, scale=scale)
+        cfg = deepcopy(exp.model)
+        cfg.block_size = int(context_length)
+        model = build_model(cfg, device, dtype)
     model.eval()
     params = parameter_block(model, cfg)
     est = estimate_from_config(cfg)

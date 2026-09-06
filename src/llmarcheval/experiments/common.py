@@ -115,6 +115,35 @@ def build_model(model_cfg: ModelConfig, device: torch.device, dtype: torch.dtype
     return model
 
 
+def load_probe_model(
+    *,
+    variant: str,
+    device: torch.device,
+    dtype: torch.dtype,
+    train_config: str | Path = "configs/smoke.yaml",
+    scale: str | None = "smoke",
+    ckpt: str | Path | None = None,
+) -> tuple[GPT, ExperimentConfig, dict[str, Any] | None]:
+    """Build a probe model from YAML defaults, or from a trained checkpoint.
+
+    When ``ckpt`` is set, architecture comes from the checkpoint's stored
+    ``config.model`` (not smoke/default YAML). This is the generic path used by
+    MoE/MLA/DSA/recurrent probes for trained-checkpoint loading.
+    """
+    if ckpt is None:
+        exp = load_probe_experiment(variant, train_config=train_config, scale=scale)
+        return build_model(exp.model, device, dtype), exp, None
+    from llmarcheval.train.checkpoint import load_model_from_checkpoint
+
+    model, exp, meta = load_model_from_checkpoint(
+        ckpt,
+        device=device,
+        dtype=dtype,
+        variant=variant,
+    )
+    return model, exp, meta
+
+
 def parameter_block(model: GPT, config: ModelConfig) -> dict[str, Any]:
     accounting = summarize_model(model, config)
     est = estimate_from_config(config)
@@ -242,6 +271,7 @@ __all__ = [
     "resolve_dtype",
     "load_probe_experiment",
     "build_model",
+    "load_probe_model",
     "parameter_block",
     "base_record",
     "write_result",

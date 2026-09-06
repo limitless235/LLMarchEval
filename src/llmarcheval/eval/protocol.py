@@ -9,19 +9,15 @@ from typing import Any
 
 import torch
 
-from llmarcheval.config import (
-    CONFIGS_DIR,
-    ExperimentConfig,
-    ModelConfig,
-    TrainConfig,
-    _apply_fields,
-    load_experiment,
-    variant_config_path,
-)
+from llmarcheval.config import ExperimentConfig, TrainConfig, _apply_fields, load_train_config
 from llmarcheval.eval.perplexity import perplexity
 from llmarcheval.models.accounting import summarize_model
 from llmarcheval.models.transformer import GPT
-from llmarcheval.train.checkpoint import load_checkpoint_blob, load_weights_into_model
+from llmarcheval.train.checkpoint import (
+    load_checkpoint_blob,
+    load_weights_into_model,
+    model_config_from_checkpoint,
+)
 from llmarcheval.train.data import TokenBatcher, load_tokens
 from llmarcheval.train.trainer import auto_device, auto_dtype, estimate_loss
 
@@ -43,43 +39,39 @@ def evaluate_checkpoint(
 ) -> dict[str, Any]:
     """Evaluate a trained checkpoint with a fixed validation protocol.
 
-    Uses the same validation split construction as training (90/10 on the
-    configured dataset), a fixed seed for the val batcher, and a fixed number
-    of evaluation iterations. Reports NLL, perplexity (when finite), parameter
-    counts, and checkpoint/training metadata.
+    Model architecture is always reconstructed from the checkpoint's stored
+    ``config.model``. Train/dataset settings come from the checkpoint when
+    present, or from an optional ``train_config`` YAML (never used to replace
+    model dimensions with smoke/default architecture).
     """
     ckpt_path = Path(ckpt)
     blob = load_checkpoint_blob(ckpt_path, map_location="cpu")
     cfg_blob = blob.get("config") if isinstance(blob.get("config"), dict) else {}
-    chosen_variant = (
-        variant
-        or blob.get("variant")
-        or (cfg_blob.get("model") or {}).get("variant")
-    )
-    if not chosen_variant:
-        raise ValueError("Could not resolve variant; pass variant= explicitly")
+
+    model_cfg = model_config_from_checkpoint(blob)
+    if variant is not None:
+        model_cfg.variant = variant
+    chosen_variant = model_cfg.variant
 
     if train_config is not None:
-        experiment = load_experiment(
-            variant_config_path(chosen_variant), train_config, scale=scale
-        )
-        if isinstance(cfg_blob.get("model"), dict):
-            experiment.model = _apply_fields(ModelConfig, cfg_blob["model"])
-    elif isinstance(cfg_blob.get("model"), dict) and isinstance(cfg_blob.get("train"), dict):
-        experiment = ExperimentConfig(
-            model=_apply_fields(ModelConfig, cfg_blob["model"]),
-            train=_apply_fields(TrainConfig, cfg_blob["train"]),
-            model_path=str(cfg_blob.get("model_path", "")),
-            train_path=str(cfg_blob.get("train_path", "")),
-        )
-        if scale is not None:
-            experiment.train.scale = scale
+        train_cfg = load_train_config(train_config)
+    elif isinstance(cfg_blob.get("train"), dict):
+        train_cfg = _apply_fields(TrainConfig, cfg_blob["train"])
     else:
-        experiment = load_experiment(
-            variant_config_path(chosen_variant),
-            CONFIGS_DIR / "smoke.yaml",
-            scale=scale,
+        raise ValueError(
+            "Checkpoint lacks config.train and no --train-config was provided; "
+            "cannot run the fixed eval protocol without dataset/train settings. "
+            "Model architecture was loaded from config.model."
         )
+    if scale is not None:
+        train_cfg.scale = scale
+
+    experiment = ExperimentConfig(
+        model=model_cfg,
+        train=train_cfg,
+        model_path=str(cfg_blob.get("model_path", "")),
+        train_path=str(cfg_blob.get("train_path", "")),
+    )
 
     device = auto_device(device_name or experiment.train.device)
     dtype = auto_dtype(experiment.train.dtype, device)
@@ -118,13 +110,21 @@ def evaluate_checkpoint(
     record: dict[str, Any] = {
         "protocol": "fixed_val_nll_v1",
         "checkpoint": meta,
-        "variant": experiment.model.variant,
+        "variant": chosen_variant,
         "dataset_source": source,
         "val_split": "tail_10pct_or_train_fallback",
         "eval_iters": int(eval_iters),
         "seed": int(seed),
         "device": str(device),
         "dtype": str(dtype).replace("torch.", ""),
+        "model_config": {
+            "n_embd": experiment.model.n_embd,
+            "n_layer": experiment.model.n_layer,
+            "n_head": experiment.model.n_head,
+            "block_size": experiment.model.block_size,
+            "vocab_size": experiment.model.vocab_size,
+            "scale_hint": experiment.train.scale,
+        },
         "nll": float(nll),
         "perplexity": float(ppl) if ppl is not None else None,
         "perplexity_valid": ppl is not None and math.isfinite(ppl),
@@ -140,6 +140,7 @@ def evaluate_checkpoint(
         "notes": [
             "Fixed validation protocol: same split rule as training, fixed seed, fixed eval_iters.",
             "Perplexity is exp(NLL) when NLL is finite.",
+            "Model architecture reconstructed from checkpoint config.model (not smoke defaults).",
             "Does not claim frontier-model reproduction.",
         ],
     }

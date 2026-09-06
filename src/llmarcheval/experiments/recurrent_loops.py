@@ -14,11 +14,9 @@ from typing import Any, Sequence
 import torch
 import torch.nn.functional as F
 
-from llmarcheval.train.checkpoint import load_weights_into_model
 from llmarcheval.experiments.common import (
     base_record,
-    build_model,
-    load_probe_experiment,
+    load_probe_model,
     parameter_block,
     resolve_device,
     resolve_dtype,
@@ -55,15 +53,18 @@ def run_recurrent_loops_experiment(
     ckpt: str | Path | None = None,
 ) -> dict[str, Any]:
     set_seed(seed)
-    exp = load_probe_experiment(variant, train_config=train_config, scale=scale)
-    if not exp.model.use_recurrent:
-        raise ValueError(f"{variant} is not recurrent")
     device = resolve_device(device_name)
     dtype = resolve_dtype("float32", device)
-    model = build_model(exp.model, device, dtype)
-    checkpoint_meta = None
-    if ckpt is not None:
-        checkpoint_meta = load_weights_into_model(model, ckpt, device)
+    model, exp, checkpoint_meta = load_probe_model(
+        variant=variant,
+        device=device,
+        dtype=dtype,
+        train_config=train_config,
+        scale=scale,
+        ckpt=ckpt,
+    )
+    if not exp.model.use_recurrent:
+        raise ValueError(f"{variant} is not recurrent")
     model.eval()
     params = parameter_block(model, exp.model)
 

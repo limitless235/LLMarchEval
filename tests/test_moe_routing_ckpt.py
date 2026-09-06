@@ -25,7 +25,9 @@ def _smoke_ckpt(tmp_path: Path, *, fill: float | None = 0.123, step: int = 200) 
         with torch.no_grad():
             next(model.parameters()).fill_(fill)
     path = tmp_path / "ckpt_final.pt"
-    torch.save({"model": model.state_dict(), "config": {"model": {}}, "step": step}, path)
+    # Legacy-compatible payload with authoritative config.model (required for
+    # generic checkpoint reconstruction — empty model metadata must not load).
+    torch.save({"model": model.state_dict(), "config": exp.to_dict(), "step": step}, path)
     return path
 
 

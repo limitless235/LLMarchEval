@@ -248,3 +248,26 @@ def test_local_16gb_w768_summarize_matches_estimate():
     summary = summarize_model(model, exp.model, batch_size=exp.train.batch_size)
     assert summary["measured_total_params"] == EXPECTED["v0_dense"]["total"]
     assert summary["memory_estimate"]["memory_figures_are_estimates"] is True
+
+
+def test_sanity_script_defaults_to_all_five_variants():
+    """Feasibility smoke must cover V0–V4 by default (no MPS required)."""
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "scripts" / "sanity_local_16gb_w768.py"
+    spec = importlib.util.spec_from_file_location("sanity_local_16gb_w768", path)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    assert mod.resolve_variants(None, False) == list_variants()
+    assert mod.resolve_variants(None, True) == list_variants()
+    assert mod.resolve_variants("v4_recurrent", False) == ["v4_recurrent"]
+    assert set(mod.resolve_variants(None, False)) == {
+        "v0_dense",
+        "v1_moe",
+        "v2_moe_mla",
+        "v3_moe_mla_dsa",
+        "v4_recurrent",
+    }

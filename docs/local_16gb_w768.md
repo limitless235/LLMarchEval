@@ -26,7 +26,8 @@ Active-parameter spread across V0–V4 is designed to stay ≤ 2%.
 These are mechanical smoke checks, **not scientific evidence**:
 
 ```bash
-python scripts/sanity_local_16gb_w768.py --all-variants
+# Default: all five V0–V4 (opt-in feasibility gate only)
+python scripts/sanity_local_16gb_w768.py
 python scripts/microbench_local_16gb_w768.py --steps 20
 ```
 

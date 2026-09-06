@@ -118,8 +118,8 @@ Isolated ~100M-active profile (same protocol as `local_16gb`; does **not** repla
 [`docs/local_16gb_w768.md`](docs/local_16gb_w768.md).
 
 ```bash
-# Feasibility smoke only (not a research campaign):
-python scripts/sanity_local_16gb_w768.py --all-variants
+# Feasibility smoke only (not a research campaign); default = all V0–V4:
+python scripts/sanity_local_16gb_w768.py
 python scripts/microbench_local_16gb_w768.py --steps 20
 ```
 

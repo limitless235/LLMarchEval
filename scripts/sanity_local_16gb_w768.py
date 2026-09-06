@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Opt-in feasibility smoke for local_16gb_w768 — NOT a research experiment.
 
-Runs one forward / backward / AdamW step at B=1, T=512, FP32 for a chosen
-variant (or all). Prefer MPS when available; falls back to CPU with a log.
+By default runs one forward / backward / AdamW step at B=1, T=512, FP32 for
+ALL V0–V4 variants. Prefer MPS when available; falls back to CPU with a log.
 
 Process RSS via resource.getrusage is reported when available. That is
 lightweight process telemetry — not Apple unified-memory peak and not a
@@ -10,8 +10,8 @@ substitute for the analytical memory formulas in accounting.py.
 
 Usage:
   python scripts/sanity_local_16gb_w768.py
-  python scripts/sanity_local_16gb_w768.py --all-variants
   python scripts/sanity_local_16gb_w768.py --variant v4_recurrent
+  python scripts/sanity_local_16gb_w768.py --all-variants   # same as default
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import math
 import resource
+import sys
 import time
 
 import torch
@@ -29,6 +30,22 @@ from llmarcheval.models.transformer import GPT
 from llmarcheval.train.trainer import auto_device, auto_dtype
 
 
+def resolve_variants(variant: str | None, all_variants: bool) -> list[str]:
+    """Select variants for the feasibility gate.
+
+    Default (no --variant): all five V0–V4. A single --variant narrows the run.
+    --all-variants is an explicit alias for the default.
+    """
+    if variant is not None and all_variants:
+        raise SystemExit("Pass either --variant NAME or --all-variants, not both")
+    if variant is not None:
+        known = list_variants()
+        if variant not in known:
+            raise SystemExit(f"Unknown variant {variant!r}; expected one of {known}")
+        return [variant]
+    return list_variants()
+
+
 def _process_rss_bytes() -> int | None:
     """Best-effort process RSS; not peak unified memory."""
     try:
@@ -37,10 +54,6 @@ def _process_rss_bytes() -> int | None:
         rss = int(usage.ru_maxrss)
         if rss <= 0:
             return None
-        # Heuristic: values that look like KiB on Linux (typically >> 1e6 if bytes).
-        # On macOS ru_maxrss is bytes; on Linux it is kilobytes.
-        import sys
-
         if sys.platform == "darwin":
             return rss
         return rss * 1024
@@ -114,8 +127,17 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description="local_16gb_w768 MPS/CPU feasibility smoke (not a training campaign)"
     )
-    parser.add_argument("--variant", type=str, default="v0_dense")
-    parser.add_argument("--all-variants", action="store_true")
+    parser.add_argument(
+        "--variant",
+        type=str,
+        default=None,
+        help="Run a single variant (default: all five V0–V4)",
+    )
+    parser.add_argument(
+        "--all-variants",
+        action="store_true",
+        help="Run all V0–V4 (default when --variant is omitted)",
+    )
     parser.add_argument(
         "--device",
         type=str,
@@ -124,27 +146,37 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
 
-    variants = list_variants() if args.all_variants else [args.variant]
+    variants = resolve_variants(args.variant, args.all_variants)
     device = auto_device(args.device)
     dtype = auto_dtype("float32", device)
     print(
         f"local_16gb_w768 feasibility smoke: device={device} dtype={dtype} "
+        f"variants={variants} "
         f"(FEASIBILITY GATE ONLY — not scientific evidence)",
         flush=True,
     )
 
-    for variant in variants:
-        row = _one_step(variant, device, dtype)
-        print(
-            f"ok {row['variant']}: loss={row['loss']:.4f} "
-            f"grad_norm={row['grad_norm']:.4f} elapsed_s={row['elapsed_s']:.3f} "
-            f"total={row['total_params']} active={row['active_params']} "
-            f"analytical_mgo_bytes={row['analytical_model_grad_optimizer_bytes']} "
-            f"process_rss_after={row['process_rss_bytes_after']}",
-            flush=True,
-        )
+    failed: str | None = None
+    try:
+        for variant in variants:
+            row = _one_step(variant, device, dtype)
+            print(
+                f"ok {row['variant']}: loss={row['loss']:.4f} "
+                f"grad_norm={row['grad_norm']:.4f} elapsed_s={row['elapsed_s']:.3f} "
+                f"total={row['total_params']} active={row['active_params']} "
+                f"analytical_mgo_bytes={row['analytical_model_grad_optimizer_bytes']} "
+                f"process_rss_after={row['process_rss_bytes_after']}",
+                flush=True,
+            )
+    except Exception as exc:
+        failed = f"{type(exc).__name__}: {exc}"
+        print(f"FAIL local_16gb_w768 feasibility smoke: {failed}", flush=True)
+        raise
 
-    print("local_16gb_w768 feasibility smoke passed", flush=True)
+    print(
+        f"PASS local_16gb_w768 feasibility smoke ({len(variants)} variant(s))",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

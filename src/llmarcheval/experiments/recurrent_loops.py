@@ -14,6 +14,7 @@ from typing import Any, Sequence
 import torch
 import torch.nn.functional as F
 
+from llmarcheval.train.checkpoint import load_weights_into_model
 from llmarcheval.experiments.common import (
     base_record,
     build_model,
@@ -51,6 +52,7 @@ def run_recurrent_loops_experiment(
     loops: Sequence[int] = (1, 2, 3, 4),
     out_dir: str | Path = "results/experiments",
     write: bool = True,
+    ckpt: str | Path | None = None,
 ) -> dict[str, Any]:
     set_seed(seed)
     exp = load_probe_experiment(variant, train_config=train_config, scale=scale)
@@ -59,6 +61,9 @@ def run_recurrent_loops_experiment(
     device = resolve_device(device_name)
     dtype = resolve_dtype("float32", device)
     model = build_model(exp.model, device, dtype)
+    checkpoint_meta = None
+    if ckpt is not None:
+        checkpoint_meta = load_weights_into_model(model, ckpt, device)
     model.eval()
     params = parameter_block(model, exp.model)
 
@@ -127,7 +132,9 @@ def run_recurrent_loops_experiment(
         wall_clock_s=wall_all,
         tokens_processed=tokens_processed,
         loss_metrics={"per_loop_nll": {str(r["loops"]): r["loss"] for r in rows}},
+        training_steps=checkpoint_meta.get("step") if checkpoint_meta else None,
         metrics={
+            "checkpoint": checkpoint_meta,
             "loops": list(loops),
             "rows": rows,
             "hypothesis": (
@@ -136,6 +143,12 @@ def run_recurrent_loops_experiment(
             ),
         },
         notes=[
+            (
+                "Fresh model initialization (no checkpoint)."
+                if checkpoint_meta is None
+                else f"Weights loaded from checkpoint {checkpoint_meta['name']}."
+            ),
+
             "Unique parameters do not grow with loops; compute does.",
             "flops_per_token is an analytical proxy (2 * active_params * depth_scale).",
             "Offline prompt; no network required.",

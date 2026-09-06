@@ -14,6 +14,7 @@ from typing import Any, Sequence
 
 import torch
 
+from llmarcheval.train.checkpoint import load_weights_into_model
 from llmarcheval.experiments.common import (
     base_record,
     build_model,
@@ -44,11 +45,14 @@ def _run_one(
     dtype: torch.dtype,
     warmup: int = 1,
     steps: int = 2,
+    ckpt: str | Path | None = None,
 ) -> dict[str, Any]:
     exp = load_probe_experiment(variant, train_config=train_config, scale=scale)
     cfg = deepcopy(exp.model)
     cfg.block_size = int(context_length)
     model = build_model(cfg, device, dtype)
+    if ckpt is not None:
+        load_weights_into_model(model, ckpt, device)
     model.eval()
     params = parameter_block(model, cfg)
     est = estimate_from_config(cfg)
@@ -103,6 +107,7 @@ def run_mla_context_experiment(
     out_dir: str | Path = "results/experiments",
     write: bool = True,
     steps: int = 2,
+    ckpts: dict[str, str | Path] | None = None,
 ) -> dict[str, Any]:
     set_seed(seed)
     device = resolve_device(device_name)
@@ -123,6 +128,7 @@ def run_mla_context_experiment(
                 device=device,
                 dtype=dtype,
                 steps=steps,
+                ckpt=(ckpts or {}).get(variant),
             )
             rows.append(row)
             tokens_processed += int(ctx) * steps
@@ -146,6 +152,7 @@ def run_mla_context_experiment(
         },
         metrics={"contexts": list(contexts), "variants": list(variants), "rows": rows},
         notes=[
+            "Optional per-variant checkpoints may be supplied via ckpts mapping.",
             "Compares V1 (MHA+MoE) vs V2 (MLA+MoE).",
             "analytical_kv_bytes_fp32 is a theoretical decode-cache layout estimate.",
             "Current MLA training forward still materializes dense K/V; no production decode cache.",

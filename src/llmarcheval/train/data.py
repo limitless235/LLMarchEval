@@ -23,6 +23,13 @@ class TokenBatcher:
         self.batch_size = batch_size
         self.rng = np.random.default_rng(seed)
 
+    def get_rng_state(self) -> dict:
+        """Serialize the private NumPy Generator used for batch sampling."""
+        return self.rng.bit_generator.state
+
+    def set_rng_state(self, state: dict) -> None:
+        self.rng.bit_generator.state = state
+
     def get_batch(self, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
         max_start = self.tokens.size - self.block_size - 1
         starts = self.rng.integers(0, max_start, size=self.batch_size)

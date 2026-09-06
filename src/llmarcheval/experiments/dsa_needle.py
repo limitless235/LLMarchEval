@@ -13,6 +13,7 @@ from typing import Any, Sequence
 
 import torch
 
+from llmarcheval.train.checkpoint import load_weights_into_model
 from llmarcheval.experiments.common import (
     base_record,
     build_model,
@@ -74,6 +75,7 @@ def run_dsa_needle_experiment(
     answer_tokens: int = 8,
     out_dir: str | Path = "results/experiments",
     write: bool = True,
+    ckpt: str | Path | None = None,
 ) -> dict[str, Any]:
     set_seed(seed)
     exp = load_probe_experiment(variant, train_config=train_config, scale=scale)
@@ -82,6 +84,9 @@ def run_dsa_needle_experiment(
     device = resolve_device(device_name)
     dtype = resolve_dtype("float32", device)
     model = build_model(exp.model, device, dtype)
+    checkpoint_meta = None
+    if ckpt is not None:
+        checkpoint_meta = load_weights_into_model(model, ckpt, device)
     model.eval()
     params = parameter_block(model, exp.model)
 
@@ -146,7 +151,9 @@ def run_dsa_needle_experiment(
         context_length=exp.model.block_size,
         wall_clock_s=wall,
         tokens_processed=tokens_processed,
+        training_steps=checkpoint_meta.get("step") if checkpoint_meta else None,
         metrics={
+            "checkpoint": checkpoint_meta,
             "probes": probes,
             "n_probes": len(probes),
             "needle_selected_rate": sum(1 for p in probes if p["needle_span_selected"])
@@ -155,6 +162,12 @@ def run_dsa_needle_experiment(
             / max(len(probes), 1),
         },
         notes=[
+            (
+                "Fresh model initialization (no checkpoint)."
+                if checkpoint_meta is None
+                else f"Weights loaded from checkpoint {checkpoint_meta['name']}."
+            ),
+
             "Offline synthetic haystacks; no network required.",
             "DSA implementation performs selection + masking on dense scores.",
             "Do not describe this as a sparse GEMM / production DSA benchmark.",

@@ -26,6 +26,8 @@ llme-train = "llmarcheval.cli.train:main"
 llme-eval = "llmarcheval.cli.eval_cli:main"
 llme-estimate = "llmarcheval.cli.estimate:main"
 llme-experiment = "llmarcheval.cli.experiment:main"
+llme-campaign = "llmarcheval.cli.campaign:main"
+llme-eval-ckpt = "llmarcheval.cli.eval_protocol:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

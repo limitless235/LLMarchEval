@@ -12,6 +12,15 @@ import torch
 from llmarcheval.config import ExperimentConfig
 from llmarcheval.models.accounting import summarize_model
 from llmarcheval.models.transformer import GPT
+from llmarcheval.train.checkpoint import (
+    apply_optimizer_state,
+    apply_scaler_state,
+    build_checkpoint,
+    load_checkpoint_blob,
+    restore_rng_state,
+    resume_start_step,
+    save_checkpoint,
+)
 from llmarcheval.train.data import TokenBatcher, load_tokens
 
 
@@ -140,6 +149,34 @@ def print_runtime_diagnostics(diag: dict) -> None:
 
 
 @torch.no_grad()
+
+def _write_training_checkpoint(
+    *,
+    path: Path,
+    model: GPT,
+    experiment: ExperimentConfig,
+    step: int,
+    steps_completed: int,
+    optimizer: torch.optim.Optimizer,
+    scaler,
+    tokens_seen: int,
+    train_batcher: TokenBatcher,
+    val_batcher: TokenBatcher,
+) -> None:
+    blob = build_checkpoint(
+        model=model,
+        config=experiment,
+        step=step,
+        steps_completed=steps_completed,
+        optimizer=optimizer,
+        scaler=scaler,
+        tokens_seen=tokens_seen,
+        train_batcher_rng=train_batcher.get_rng_state(),
+        val_batcher_rng=val_batcher.get_rng_state(),
+    )
+    save_checkpoint(path, blob)
+
+
 def estimate_loss(
     model: GPT, batcher: TokenBatcher, device: torch.device, eval_iters: int, dtype: torch.dtype
 ) -> float:
@@ -157,7 +194,11 @@ def estimate_loss(
     return float(sum(losses) / len(losses))
 
 
-def train(experiment: ExperimentConfig) -> dict:
+def train(
+    experiment: ExperimentConfig,
+    *,
+    resume_from: str | Path | None = None,
+) -> dict:
     cfg = experiment.train
     torch.manual_seed(cfg.seed)
     device = auto_device(cfg.device)
@@ -203,12 +244,32 @@ def train(experiment: ExperimentConfig) -> dict:
     first_loss = None
     last_loss = None
     history: list[dict] = []
+    start_step = 0
+    max_iters = int(cfg.max_iters or 0)
+
+    if resume_from is not None:
+        blob = load_checkpoint_blob(resume_from, map_location=device)
+        model.load_state_dict(blob["model"])
+        restored_opt = apply_optimizer_state(optimizer, blob)
+        apply_scaler_state(scaler, blob)
+        if blob.get("train_batcher_rng") is not None:
+            train_batcher.set_rng_state(blob["train_batcher_rng"])
+        if blob.get("val_batcher_rng") is not None:
+            val_batcher.set_rng_state(blob["val_batcher_rng"])
+        restore_rng_state(blob.get("rng"))
+        tokens_seen = int(blob.get("tokens_seen") or 0)
+        start_step = resume_start_step(blob, max_iters)
+        print(
+            f"[{experiment.model.variant}] resume from {resume_from} "
+            f"start_step={start_step} tokens_seen={tokens_seen} "
+            f"optimizer_restored={restored_opt}",
+            flush=True,
+        )
 
     model.train()
     optimizer.zero_grad(set_to_none=True)
-    max_iters = int(cfg.max_iters or 0)
     train_loops = experiment.model.train_loops if experiment.model.use_recurrent else None
-    for step in range(max_iters):
+    for step in range(start_step, max_iters):
         lr = cosine_lr(step, cfg.warmup_iters, max_iters, cfg.lr, cfg.min_lr)
         for group in optimizer.param_groups:
             group["lr"] = lr
@@ -269,14 +330,30 @@ def train(experiment: ExperimentConfig) -> dict:
             print(f"[{experiment.model.variant}] val loss {val:.4f}", flush=True)
 
         if cfg.ckpt_interval and step > 0 and step % cfg.ckpt_interval == 0:
-            torch.save(
-                {"model": model.state_dict(), "config": experiment.to_dict(), "step": step},
-                out_dir / f"ckpt_{step}.pt",
+            _write_training_checkpoint(
+                path=out_dir / f"ckpt_{step}.pt",
+                model=model,
+                experiment=experiment,
+                step=step,
+                steps_completed=step + 1,
+                optimizer=optimizer,
+                scaler=scaler,
+                tokens_seen=tokens_seen,
+                train_batcher=train_batcher,
+                val_batcher=val_batcher,
             )
 
-    torch.save(
-        {"model": model.state_dict(), "config": experiment.to_dict(), "step": cfg.max_iters},
-        out_dir / "ckpt_final.pt",
+    _write_training_checkpoint(
+        path=out_dir / "ckpt_final.pt",
+        model=model,
+        experiment=experiment,
+        step=max_iters,
+        steps_completed=max_iters,
+        optimizer=optimizer,
+        scaler=scaler,
+        tokens_seen=tokens_seen,
+        train_batcher=train_batcher,
+        val_batcher=val_batcher,
     )
     elapsed = time.time() - t0
     summary = {
@@ -293,6 +370,9 @@ def train(experiment: ExperimentConfig) -> dict:
         "accounting": accounting,
         "runtime_diagnostics": diagnostics,
         "history": history,
+        "resumed_from": str(resume_from) if resume_from is not None else None,
+        "start_step": start_step,
+        "max_iters": max_iters,
     }
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     return summary

@@ -12,6 +12,7 @@ from typing import Any
 
 import torch
 
+from llmarcheval.train.checkpoint import load_weights_into_model
 from llmarcheval.experiments.common import (
     base_record,
     build_model,
@@ -77,21 +78,6 @@ def _routing_metrics(stats: dict, n_experts: int) -> dict[str, Any]:
     }
 
 
-def _load_checkpoint(model: torch.nn.Module, ckpt: str | Path, device: torch.device) -> dict[str, Any]:
-    """Load weights using the established trainer/eval checkpoint schema."""
-    ckpt_path = Path(ckpt)
-    blob = torch.load(ckpt_path, map_location=device)
-    if not isinstance(blob, dict) or "model" not in blob:
-        raise ValueError(f"Checkpoint {ckpt_path} missing required 'model' state dict")
-    model.load_state_dict(blob["model"])
-    step = blob.get("step")
-    return {
-        "path": str(ckpt_path),
-        "name": ckpt_path.name,
-        "step": int(step) if step is not None else None,
-    }
-
-
 @torch.no_grad()
 def run_moe_routing_experiment(
     *,
@@ -113,7 +99,7 @@ def run_moe_routing_experiment(
     model = build_model(exp.model, device, dtype)
     checkpoint_meta: dict[str, Any] | None = None
     if ckpt is not None:
-        checkpoint_meta = _load_checkpoint(model, ckpt, device)
+        checkpoint_meta = load_weights_into_model(model, ckpt, device)
     model.eval()
     params = parameter_block(model, exp.model)
 

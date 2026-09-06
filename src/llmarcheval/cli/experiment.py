@@ -42,6 +42,13 @@ def main(argv: list[str] | None = None) -> None:
     mla.add_argument("--variants", nargs="+", default=["v1_moe", "v2_moe_mla"])
     mla.add_argument("--contexts", nargs="+", type=int, default=list(DEFAULT_CONTEXTS))
     mla.add_argument("--steps", type=int, default=2)
+    mla.add_argument(
+        "--ckpt",
+        action="append",
+        default=[],
+        metavar="VARIANT=PATH",
+        help="Optional trained checkpoint as VARIANT=PATH (repeatable)",
+    )
 
     dsa = sub.add_parser("dsa-needle", help="DSA needle selection/retrieval probe")
     _add_common(dsa)
@@ -54,11 +61,23 @@ def main(argv: list[str] | None = None) -> None:
         choices=["start", "middle", "end"],
     )
     dsa.add_argument("--answer-tokens", type=int, default=8)
+    dsa.add_argument(
+        "--ckpt",
+        type=str,
+        default=None,
+        help="Optional trained checkpoint (expects keys: model, config, step)",
+    )
 
     rec = sub.add_parser("recurrent-loops", help="Recurrent loop compute-dial sweep")
     _add_common(rec)
     rec.add_argument("--variant", type=str, default="v4_recurrent")
     rec.add_argument("--loops", nargs="+", type=int, default=[1, 2, 3, 4])
+    rec.add_argument(
+        "--ckpt",
+        type=str,
+        default=None,
+        help="Optional trained checkpoint (expects keys: model, config, step)",
+    )
 
     args = parser.parse_args(argv)
     write = not args.no_write
@@ -74,10 +93,17 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "moe-routing":
         record = run_moe_routing_experiment(variant=args.variant, ckpt=args.ckpt, **common)
     elif args.command == "mla-context":
+        ckpts = {}
+        for item in args.ckpt:
+            if "=" not in item:
+                raise SystemExit(f"--ckpt for mla-context must be VARIANT=PATH, got {item!r}")
+            variant_name, path = item.split("=", 1)
+            ckpts[variant_name] = path
         record = run_mla_context_experiment(
             variants=args.variants,
             contexts=args.contexts,
             steps=args.steps,
+            ckpts=ckpts or None,
             **common,
         )
     elif args.command == "dsa-needle":
@@ -86,12 +112,14 @@ def main(argv: list[str] | None = None) -> None:
             haystack_lens=args.haystack_lens,
             needle_positions=args.needle_positions,
             answer_tokens=args.answer_tokens,
+            ckpt=args.ckpt,
             **common,
         )
     elif args.command == "recurrent-loops":
         record = run_recurrent_loops_experiment(
             variant=args.variant,
             loops=args.loops,
+            ckpt=args.ckpt,
             **common,
         )
     else:

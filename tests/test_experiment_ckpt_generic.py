@@ -72,3 +72,7 @@ def test_mla_accepts_ckpts_mapping(tmp_path: Path):
         ckpts={"v2_moe_mla": ckpt},
     )
     assert "mla" in record.get("experiment", "")
+    assert record["metrics"]["checkpoint"] is not None
+    assert record["metrics"]["checkpoint"]["step"] == 42
+    assert record["config"]["model"]["n_embd"] == record["metrics"]["rows"][0]["model_config"]["n_embd"]
+    assert record["training_steps"] == 42

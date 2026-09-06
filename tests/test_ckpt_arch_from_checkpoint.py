@@ -131,9 +131,41 @@ def test_v2_mla_probe_loads_local_16gb_ckpt(tmp_path: Path):
         scale="smoke",
         ckpts={"v2_moe_mla": ckpt},
     )
+    # Top-level record must be checkpoint-authoritative (not smoke 256-d).
+    model_cfg = record["config"]["model"]
+    assert model_cfg["n_embd"] == 384
+    assert model_cfg["n_layer"] == 8
+    assert model_cfg["n_head"] == 6
+    assert model_cfg["use_moe"] is True
+    assert model_cfg["use_mla"] is True
+    assert model_cfg["n_embd"] == trained.n_embd
+    assert model_cfg["n_layer"] == trained.n_layer
+    assert model_cfg["n_head"] == trained.n_head
+
+    assert record["parameter_counts"]["total"] == 64_728_192
+    assert record["parameter_counts"]["active"] == 36_416_640
+    # Regression: must not claim smoke dims while reporting local_16gb counts.
+    assert record["config"]["model"]["n_embd"] != 256
+
+    ckpt_meta = record["metrics"]["checkpoint"]
+    assert ckpt_meta is not None
+    assert ckpt_meta["path"] == str(ckpt)
+    assert ckpt_meta["name"] == ckpt.name
+    assert ckpt_meta["step"] == 5
+    assert ckpt_meta["tokens_seen"] is not None
+    assert ckpt_meta["checkpoint_version"] is not None
+    assert "has_optimizer" in ckpt_meta
+    assert "has_rng" in ckpt_meta
+    assert record["training_steps"] == 5
+
     rows = record["metrics"]["rows"]
     assert len(rows) == 1
-    assert rows[0]["parameter_counts"]["total"] > 40_000_000
+    assert rows[0]["parameter_counts"]["total"] == 64_728_192
+    assert rows[0]["parameter_counts"]["active"] == 36_416_640
+    assert rows[0]["model_config"]["n_embd"] == 384
+    assert rows[0]["checkpoint"]["step"] == 5
+    assert rows[0]["loss_finite"] is True
+    assert rows[0]["analytical_kv_bytes_are_theoretical"] is True
 
     loaded, exp, _ = load_model_from_checkpoint(
         ckpt, device=resolve_device("cpu"), variant="v2_moe_mla"
@@ -142,6 +174,44 @@ def test_v2_mla_probe_loads_local_16gb_ckpt(tmp_path: Path):
     assert exp.model.kv_lora_rank == trained.kv_lora_rank
     assert exp.model.qk_rope_head_dim == trained.qk_rope_head_dim
     assert loaded.wte.weight.shape[-1] == 384
+
+
+def test_mla_context_no_checkpoint_still_uses_smoke(tmp_path: Path):
+    record = run_mla_context_experiment(
+        variants=["v2_moe_mla"],
+        contexts=[32],
+        steps=1,
+        write=False,
+        device_name="cpu",
+        train_config="configs/smoke.yaml",
+        scale="smoke",
+    )
+    assert record["config"]["model"]["n_embd"] == 256
+    assert record["metrics"]["checkpoint"] is None
+    assert record["metrics"]["rows"][0]["checkpoint"] is None
+    assert record["parameter_counts"]["total"] < 40_000_000
+
+
+def test_mla_context_multi_variant_with_one_ckpt_keeps_per_row_provenance(tmp_path: Path):
+    ckpt, _trained = _local_16gb_ckpt("v2_moe_mla", tmp_path)
+    record = run_mla_context_experiment(
+        variants=["v1_moe", "v2_moe_mla"],
+        contexts=[32],
+        steps=1,
+        write=False,
+        device_name="cpu",
+        train_config="configs/smoke.yaml",
+        scale="smoke",
+        ckpts={"v2_moe_mla": ckpt},
+    )
+    # Multi-variant: do not invent a single checkpoint-authoritative aggregate.
+    assert record["metrics"]["checkpoint"] is None
+    by_variant = {r["variant"]: r for r in record["metrics"]["rows"]}
+    assert by_variant["v1_moe"]["checkpoint"] is None
+    assert by_variant["v1_moe"]["model_config"]["n_embd"] == 256
+    assert by_variant["v2_moe_mla"]["checkpoint"]["step"] == 5
+    assert by_variant["v2_moe_mla"]["model_config"]["n_embd"] == 384
+    assert by_variant["v2_moe_mla"]["parameter_counts"]["total"] == 64_728_192
 
 
 def test_eval_protocol_uses_checkpoint_384_not_smoke(tmp_path: Path):

@@ -148,7 +148,24 @@ def print_runtime_diagnostics(diag: dict) -> None:
     print("=== end diagnostics ===", flush=True)
 
 
-@torch.no_grad()
+class NonFiniteLossError(RuntimeError):
+    """Training or validation loss was NaN/Inf; abort the run."""
+
+
+def _require_finite_loss(value: float, kind: str, *, step: int | None = None) -> float:
+    if math.isfinite(value):
+        return float(value)
+    where = f" at step {step}" if step is not None else ""
+    raise NonFiniteLossError(f"Non-finite {kind} loss{where}: {value!r}")
+
+
+def _perplexity_from_nll(nll: float) -> float:
+    """Derived metric: ppl = exp(nll). Caller must pass a finite nll."""
+    ppl = math.exp(nll)
+    if not math.isfinite(ppl):
+        raise NonFiniteLossError(f"Non-finite perplexity derived from nll={nll!r}")
+    return float(ppl)
+
 
 def _write_training_checkpoint(
     *,
@@ -177,6 +194,7 @@ def _write_training_checkpoint(
     save_checkpoint(path, blob)
 
 
+@torch.no_grad()
 def estimate_loss(
     model: GPT, batcher: TokenBatcher, device: torch.device, eval_iters: int, dtype: torch.dtype
 ) -> float:
@@ -192,6 +210,28 @@ def estimate_loss(
         losses.append(out.loss.item())
     model.train()
     return float(sum(losses) / len(losses))
+
+
+def _persist_val_metrics(
+    *,
+    history: list[dict],
+    metrics_path: Path,
+    step: int,
+    val_loss: float,
+    tokens_seen: int,
+) -> float:
+    """Persist scheduled validation into history + metrics.jsonl; return val_ppl."""
+    val_ppl = _perplexity_from_nll(val_loss)
+    row = {
+        "step": step,
+        "val_loss": val_loss,
+        "val_ppl": val_ppl,
+        "tokens_seen": tokens_seen,
+    }
+    history.append(row)
+    with metrics_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row) + "\n")
+    return val_ppl
 
 
 def train(
@@ -301,11 +341,13 @@ def train(
             optimizer.step()
         optimizer.zero_grad(set_to_none=True)
 
+        _require_finite_loss(step_loss, "training", step=step)
+
         if first_loss is None:
             first_loss = step_loss
         last_loss = step_loss
 
-        if step % cfg.log_interval == 0 or step == cfg.max_iters - 1:
+        if step % cfg.log_interval == 0 or step == max_iters - 1:
             elapsed = time.time() - t0
             tok_s = tokens_seen / max(elapsed, 1e-6)
             row = {
@@ -326,8 +368,22 @@ def train(
             )
 
         if cfg.eval_interval and step > 0 and step % cfg.eval_interval == 0:
-            val = estimate_loss(model, val_batcher, device, cfg.eval_iters, dtype)
-            print(f"[{experiment.model.variant}] val loss {val:.4f}", flush=True)
+            val = _require_finite_loss(
+                estimate_loss(model, val_batcher, device, cfg.eval_iters, dtype),
+                "validation",
+                step=step,
+            )
+            val_ppl = _persist_val_metrics(
+                history=history,
+                metrics_path=metrics_path,
+                step=step,
+                val_loss=val,
+                tokens_seen=tokens_seen,
+            )
+            print(
+                f"[{experiment.model.variant}] val loss {val:.4f} ppl {val_ppl:.4f}",
+                flush=True,
+            )
 
         if cfg.ckpt_interval and step > 0 and step % cfg.ckpt_interval == 0:
             _write_training_checkpoint(
@@ -342,6 +398,23 @@ def train(
                 train_batcher=train_batcher,
                 val_batcher=val_batcher,
             )
+
+    final_val_loss = None
+    final_val_ppl = None
+    # Always evaluate after the final optimizer step, even when it is not a
+    # scheduled eval_interval point (e.g. 245-step pilot with interval 50).
+    if start_step < max_iters:
+        final_val_loss = _require_finite_loss(
+            estimate_loss(model, val_batcher, device, cfg.eval_iters, dtype),
+            "validation",
+            step=max_iters,
+        )
+        final_val_ppl = _perplexity_from_nll(final_val_loss)
+        print(
+            f"[{experiment.model.variant}] final val loss {final_val_loss:.4f} "
+            f"ppl {final_val_ppl:.4f}",
+            flush=True,
+        )
 
     _write_training_checkpoint(
         path=out_dir / "ckpt_final.pt",
@@ -364,6 +437,8 @@ def train(
         "first_loss": first_loss,
         "last_loss": last_loss,
         "loss_dropped": last_loss is not None and first_loss is not None and last_loss < first_loss,
+        "final_val_loss": final_val_loss,
+        "final_val_ppl": final_val_ppl,
         "tokens_seen": tokens_seen,
         "elapsed_s": elapsed,
         "tok_s": tokens_seen / max(elapsed, 1e-6),

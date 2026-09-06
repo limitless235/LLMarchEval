@@ -22,6 +22,14 @@ scales:
     n_head: 6
     block_size: 512
     n_inner: 1428
+  local_16gb_w768:
+    # Opt-in ~100M-active width scale-up (same depth/ctx/protocol as local_16gb).
+    # Does not replace frozen local_16gb (384-d / ~37M).
+    n_layer: 8
+    n_embd: 768
+    n_head: 12
+    block_size: 512
+    n_inner: 2880
   full:
     n_layer: 12
     n_embd: 768

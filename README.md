@@ -111,6 +111,18 @@ python scripts/validate_local_16gb.py
 python scripts/train.py --train-config configs/local_16gb.yaml --variant v0_dense --max-iters 50
 ```
 
+### Opt-in width scale-up (`local_16gb_w768`)
+
+Isolated ~100M-active profile (same protocol as `local_16gb`; does **not** replace it):
+[`configs/local_16gb_w768.yaml`](configs/local_16gb_w768.yaml),
+[`docs/local_16gb_w768.md`](docs/local_16gb_w768.md).
+
+```bash
+# Feasibility smoke only (not a research campaign):
+python scripts/sanity_local_16gb_w768.py --all-variants
+python scripts/microbench_local_16gb_w768.py --steps 20
+```
+
 
 ## Cost estimate (do this before any 150M pretrain)
 
@@ -132,7 +144,8 @@ All of these are YAML: `n_layer`, `n_embd`, `n_head`, `n_experts`, `n_active`,
 `block_size`, `max_iters`, `tokens_budget`, MLA ranks, DSA `index_topk`,
 recurrent `train_loops` / `eval_loops`.
 
-Model files live in `configs/models/`. Scale blocks are `smoke`, `local_16gb`, and `full`.
+Model files live in `configs/models/`. Scale blocks are `smoke`, `local_16gb`,
+`local_16gb_w768` (opt-in), and `full`.
 
 ## Architecture probes (not a security product)
 

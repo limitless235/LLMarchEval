@@ -44,6 +44,21 @@ scales:
     index_topk: 64
     train_loops: 2
     eval_loops: 2
+  local_16gb_w768:
+    # Opt-in ~100M-active width scale-up; same recurrent topology as local_16gb.
+    # Unique layers = 8; extra compute from train_loops (recurrent/looped hypothesis).
+    n_prelude: 1
+    n_recurrent: 6
+    n_coda: 1
+    n_embd: 768
+    n_head: 12
+    block_size: 512
+    n_inner: 3200
+    kv_lora_rank: 32
+    qk_rope_head_dim: 16
+    index_topk: 64
+    train_loops: 2
+    eval_loops: 2
   full:
     n_prelude: 2
     n_recurrent: 8

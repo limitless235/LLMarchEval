@@ -27,6 +27,13 @@ scales:
     block_size: 512
     # Same n_inner as V0 local_16gb; MoE expert width auto-scales for active FFN ≈ dense.
     n_inner: 1428
+  local_16gb_w768:
+    # Opt-in ~100M-active width scale-up; same n_inner as V0 local_16gb_w768.
+    n_layer: 8
+    n_embd: 768
+    n_head: 12
+    block_size: 512
+    n_inner: 2880
   full:
     n_layer: 12
     n_embd: 768

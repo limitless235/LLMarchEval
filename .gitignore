@@ -25,6 +25,7 @@ runs/
 data/cache/
 data/tinystories/
 data/fineweb/
+data/fineweb_edu_100m/
 .cache/
 
 # Editor

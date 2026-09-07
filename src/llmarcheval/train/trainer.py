@@ -17,6 +17,7 @@ from llmarcheval.train.checkpoint import (
     apply_scaler_state,
     build_checkpoint,
     load_checkpoint_blob,
+    prune_mid_checkpoints,
     restore_rng_state,
     resume_start_step,
     save_checkpoint,
@@ -398,6 +399,14 @@ def train(
                 train_batcher=train_batcher,
                 val_batcher=val_batcher,
             )
+            if cfg.ckpt_keep_last is not None:
+                removed = prune_mid_checkpoints(out_dir, cfg.ckpt_keep_last)
+                if removed:
+                    print(
+                        f"[{experiment.model.variant}] pruned {len(removed)} older mid-checkpoint(s); "
+                        f"keeping last {cfg.ckpt_keep_last}",
+                        flush=True,
+                    )
 
     final_val_loss = None
     final_val_ppl = None

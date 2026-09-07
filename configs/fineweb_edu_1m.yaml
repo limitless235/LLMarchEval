@@ -1,0 +1,34 @@
+# FineWeb-Edu frozen-corpus CONTROL campaign at ~1M tokens (local_16gb_w768).
+# Architecture/protocol match TinyStories local_16gb_w768 except dataset + budget/out_dir.
+# Requires: python scripts/pack_fineweb_edu.py  (frozen packed tokens + manifest).
+#
+# Use campaign CLI for exact step accounting:
+#   python scripts/campaign.py --train-config configs/fineweb_edu_1m.yaml \
+#       --variant v0_dense --tokens-budget 1000000
+# → max_iters=245, tokens_seen=1,003,520
+#
+# TinyStories 1M results remain a separate historical pilot — do not pool.
+scale: local_16gb_w768
+dataset: packed
+packed_tokens_path: data/fineweb_edu_100m/tokens.uint16.npy
+max_docs: null
+max_iters: 245
+batch_size: 1
+grad_accum: 8
+lr: 3.0e-4
+warmup_iters: 20
+min_lr: 3.0e-5
+weight_decay: 0.1
+grad_clip: 1.0
+log_interval: 10
+eval_interval: 50
+eval_iters: 5
+ckpt_interval: 1000
+# Keep final + last 2 mid-run checkpoints (disk hygiene for Mac).
+ckpt_keep_last: 2
+device: mps
+dtype: float32
+seed: 1337
+out_dir: results/fineweb_edu_1m
+allow_dataset_fallback: false
+tokens_budget: 1000000

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +13,7 @@ from llmarcheval.tokenizer import encode
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CORPUS = REPO_ROOT / "data" / "smoke_corpus.txt"
+DEFAULT_PACKED_FINEWEB = REPO_ROOT / "data" / "fineweb_edu_100m" / "tokens.uint16.npy"
 
 
 class TokenBatcher:
@@ -53,6 +55,39 @@ def load_corpus_file(path: str | Path) -> np.ndarray:
     return _tokenize_text(text)
 
 
+def load_packed_tokens(path: str | Path) -> np.ndarray:
+    """Load a frozen packed token array (``uint16`` ``.npy``).
+
+    The array is memory-mapped read-only so multi-variant campaigns can share
+    the same ~100M-token FineWeb-Edu corpus without reloading into RAM copies.
+    """
+    token_path = Path(path)
+    if not token_path.is_file():
+        raise FileNotFoundError(
+            f"Packed tokens not found at {token_path}. "
+            "Run scripts/pack_fineweb_edu.py first (or set packed_tokens_path)."
+        )
+    tokens = np.load(token_path, mmap_mode="r")
+    if tokens.dtype != np.uint16:
+        raise ValueError(f"Expected uint16 packed tokens, got {tokens.dtype} at {token_path}")
+    if tokens.ndim != 1:
+        raise ValueError(f"Expected 1-D packed token array, got shape {tokens.shape}")
+    if tokens.size == 0:
+        raise ValueError(f"Packed token array is empty: {token_path}")
+    return tokens
+
+
+def packed_manifest_path(tokens_path: str | Path) -> Path:
+    return Path(tokens_path).with_name("manifest.json")
+
+
+def load_packed_manifest(tokens_path: str | Path) -> dict | None:
+    path = packed_manifest_path(tokens_path)
+    if not path.is_file():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def load_tinystories(max_docs: int) -> np.ndarray:
     try:
         from datasets import load_dataset
@@ -90,10 +125,18 @@ def load_tokens(train: TrainConfig, allow_fallback: bool | None = None) -> tuple
     Research / comparative runs must set ``allow_dataset_fallback=False`` (the
     TrainConfig default). Smoke development may opt in to falling back to the
     bundled corpus when TinyStories/FineWeb are unavailable.
+
+    Frozen FineWeb-Edu campaigns should use ``dataset: packed`` (or
+    ``fineweb_edu_packed``) with ``packed_tokens_path`` pointing at the prep
+    script output so every variant shares the identical token array.
     """
     if allow_fallback is None:
         allow_fallback = train.allow_dataset_fallback
     name = train.dataset.lower()
+    if name in {"packed", "fineweb_edu_packed", "packed_tokens"}:
+        path = train.packed_tokens_path or str(DEFAULT_PACKED_FINEWEB)
+        tokens = load_packed_tokens(path)
+        return tokens, f"packed:{path}"
     if name in {"synthetic", "corpus", "smoke_corpus"}:
         return load_corpus_file(DEFAULT_CORPUS), str(DEFAULT_CORPUS)
     if name == "tinystories":

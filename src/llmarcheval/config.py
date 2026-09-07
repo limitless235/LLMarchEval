@@ -154,6 +154,10 @@ class TrainConfig:
     # If False (default), TinyStories/FineWeb load failures raise — no silent smoke corpus.
     # Smoke configs may set True for offline development only.
     allow_dataset_fallback: bool = False
+    # Frozen packed token array (uint16 .npy). Used when dataset is "packed" / "fineweb_edu_packed".
+    packed_tokens_path: str | None = None
+    # Keep only the newest N mid-run ckpt_{step}.pt files (None = keep all). Final ckpt always kept.
+    ckpt_keep_last: int | None = None
 
 
 @dataclass

@@ -115,10 +115,58 @@ def build_checkpoint(
 
 
 def save_checkpoint(path: str | Path, blob: dict[str, Any]) -> Path:
+    """Atomically write a checkpoint (temp file + os.replace).
+
+    Avoids leaving a truncated ``.pt`` at the destination if serialization fails
+    mid-write (previously observed as zip central-directory corruption).
+    """
+    import os
+    import tempfile
+
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(blob, out)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{out.name}.", suffix=".tmp", dir=out.parent)
+    tmp_path = Path(tmp_name)
+    try:
+        os.close(fd)
+        torch.save(blob, tmp_path)
+        with tmp_path.open("rb") as handle:
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, out)
+    except Exception:
+        if tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
+        raise
     return out
+
+
+def prune_mid_checkpoints(out_dir: str | Path, keep_last: int) -> list[Path]:
+    """Delete older mid-run ``ckpt_{step}.pt`` files; never touches ``ckpt_final.pt``.
+
+    Returns paths that were removed. ``keep_last <= 0`` deletes all mid checkpoints.
+    """
+    directory = Path(out_dir)
+    if not directory.is_dir():
+        return []
+    mids: list[tuple[int, Path]] = []
+    for path in directory.glob("ckpt_*.pt"):
+        if path.name == "ckpt_final.pt":
+            continue
+        stem = path.stem  # ckpt_1000
+        if not stem.startswith("ckpt_"):
+            continue
+        suffix = stem[len("ckpt_") :]
+        if not suffix.isdigit():
+            continue
+        mids.append((int(suffix), path))
+    mids.sort(key=lambda item: item[0])
+    keep = max(int(keep_last), 0)
+    to_remove = mids if keep == 0 else mids[:-keep] if len(mids) > keep else []
+    removed: list[Path] = []
+    for _step, path in to_remove:
+        path.unlink(missing_ok=True)
+        removed.append(path)
+    return removed
 
 
 def load_checkpoint_blob(path: str | Path, map_location: str | torch.device = "cpu") -> dict[str, Any]:
@@ -336,6 +384,7 @@ __all__ = [
     "load_model_from_checkpoint",
     "load_weights_into_model",
     "model_config_from_checkpoint",
+    "prune_mid_checkpoints",
     "restore_rng_state",
     "resume_start_step",
     "save_checkpoint",

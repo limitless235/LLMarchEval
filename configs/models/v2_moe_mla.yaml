@@ -1,0 +1,45 @@
+variant: v2_moe_mla
+use_moe: true
+use_mla: true
+use_dsa: false
+use_recurrent: false
+n_experts: 8
+n_active: 2
+n_shared_experts: 1
+router_aux_loss_coef: 0.01
+tie_weights: true
+dropout: 0.0
+bias: false
+notes: V1 plus simplified multi-head latent attention (compressed KV).
+
+scales:
+  smoke:
+    n_layer: 4
+    n_embd: 256
+    n_head: 4
+    block_size: 256
+    kv_lora_rank: 32
+    qk_rope_head_dim: 16
+  local_16gb:
+    n_layer: 8
+    n_embd: 384
+    n_head: 6
+    block_size: 512
+    kv_lora_rank: 32
+    qk_rope_head_dim: 16
+  local_16gb_w768:
+    # Opt-in ~100M-active width scale-up; n_inner widened vs default 4*n_embd for active match.
+    n_layer: 8
+    n_embd: 768
+    n_head: 12
+    block_size: 512
+    n_inner: 3200
+    kv_lora_rank: 32
+    qk_rope_head_dim: 16
+  full:
+    n_layer: 12
+    n_embd: 768
+    n_head: 12
+    block_size: 1024
+    kv_lora_rank: 64
+    qk_rope_head_dim: 32

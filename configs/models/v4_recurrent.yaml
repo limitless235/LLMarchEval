@@ -1,0 +1,73 @@
+variant: v4_recurrent
+use_moe: true
+use_mla: true
+use_dsa: true
+use_recurrent: true
+n_experts: 8
+n_active: 2
+n_shared_experts: 1
+router_aux_loss_coef: 0.01
+index_n_heads: 4
+index_head_dim: 32
+dsa_local_window: 16
+tie_weights: true
+dropout: 0.0
+bias: false
+notes: >
+  V3 plus a Geiping-style prelude / looped block / coda.
+  This tests the inferred Astra recurrent-depth hypothesis, not Astra internals.
+  Unique layer count matches V3; extra compute comes from loops.
+
+scales:
+  smoke:
+    n_prelude: 1
+    n_recurrent: 2
+    n_coda: 1
+    n_embd: 256
+    n_head: 4
+    block_size: 256
+    kv_lora_rank: 32
+    qk_rope_head_dim: 16
+    index_topk: 32
+    train_loops: 2
+    eval_loops: 2
+  local_16gb:
+    # Unique layers = 8 to match V3 local depth; extra compute from train_loops.
+    n_prelude: 1
+    n_recurrent: 6
+    n_coda: 1
+    n_embd: 384
+    n_head: 6
+    block_size: 512
+    kv_lora_rank: 32
+    qk_rope_head_dim: 16
+    index_topk: 64
+    train_loops: 2
+    eval_loops: 2
+  local_16gb_w768:
+    # Opt-in ~100M-active width scale-up; same recurrent topology as local_16gb.
+    # Unique layers = 8; extra compute from train_loops (recurrent/looped hypothesis).
+    n_prelude: 1
+    n_recurrent: 6
+    n_coda: 1
+    n_embd: 768
+    n_head: 12
+    block_size: 512
+    n_inner: 3200
+    kv_lora_rank: 32
+    qk_rope_head_dim: 16
+    index_topk: 64
+    train_loops: 2
+    eval_loops: 2
+  full:
+    n_prelude: 2
+    n_recurrent: 8
+    n_coda: 2
+    n_embd: 768
+    n_head: 12
+    block_size: 1024
+    kv_lora_rank: 64
+    qk_rope_head_dim: 32
+    index_topk: 128
+    train_loops: 2
+    eval_loops: 2

@@ -1,0 +1,40 @@
+variant: v0_dense
+use_moe: false
+use_mla: false
+use_dsa: false
+use_recurrent: false
+tie_weights: true
+dropout: 0.0
+bias: false
+notes: Dense decoder-only Transformer baseline.
+
+scales:
+  smoke:
+    n_layer: 4
+    n_embd: 256
+    n_head: 4
+    block_size: 256
+  local_16gb:
+    # Midpoint between smoke (4×256) and full (12×768): 8×384, head_dim=64, ctx=512.
+    # ~37M active; n_inner shrunk so active params stay near V2–V4.
+    n_layer: 8
+    n_embd: 384
+    n_head: 6
+    block_size: 512
+    n_inner: 1428
+  local_16gb_w768:
+    # Opt-in ~100M-active width scale-up (same depth/ctx/protocol as local_16gb).
+    # Does not replace frozen local_16gb (384-d / ~37M).
+    n_layer: 8
+    n_embd: 768
+    n_head: 12
+    block_size: 512
+    n_inner: 2880
+  full:
+    n_layer: 12
+    n_embd: 768
+    n_head: 12
+    block_size: 1024
+    # Shrink FFN vs default 4*n_embd so full-scale active params match V2–V4 (±2%).
+    # Prefer shrinking V0/V1 over widening MLA so the KV-compression comparison stays clean.
+    n_inner: 2832

@@ -1,0 +1,32 @@
+# FineWeb-Edu frozen-corpus PRIMARY architecture campaign at ~20M tokens (local_16gb_w768).
+# Same frozen packed corpus as configs/fineweb_edu_1m.yaml — only training budget differs.
+#
+#   python scripts/campaign.py --train-config configs/fineweb_edu_20m.yaml \
+#       --variant v0_dense --tokens-budget 20000000
+# → max_iters=4883, tokens_seen=20,000,768
+#
+# Keep warmup_iters=20 (same optimizer recipe as 1M; warmup fraction shrinks — documented).
+# Do NOT pool with TinyStories 1M pilot results.
+scale: local_16gb_w768
+dataset: packed
+packed_tokens_path: data/fineweb_edu_100m/tokens.uint16.npy
+max_docs: null
+max_iters: 4883
+batch_size: 1
+grad_accum: 8
+lr: 3.0e-4
+warmup_iters: 20
+min_lr: 3.0e-5
+weight_decay: 0.1
+grad_clip: 1.0
+log_interval: 10
+eval_interval: 50
+eval_iters: 5
+ckpt_interval: 1000
+ckpt_keep_last: 2
+device: mps
+dtype: float32
+seed: 1337
+out_dir: results/fineweb_edu_20m
+allow_dataset_fallback: false
+tokens_budget: 20000000

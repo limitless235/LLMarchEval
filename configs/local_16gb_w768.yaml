@@ -1,0 +1,32 @@
+# Opt-in ~100M-active width scale-up for ~16 GB unified-memory Macs (MPS FP32, else CPU).
+# Same training protocol as frozen local_16gb; only model width / FFN widths change.
+# Does NOT replace configs/local_16gb.yaml (~37M active). Not a pretrain campaign.
+#
+# Apple unified memory is shared by model, grads, optimizer states, activations,
+# and the OS/apps. "16 GB" is not 16 GB available to PyTorch.
+# Memory figures printed at startup are analytical estimates, not measurements.
+scale: local_16gb_w768
+dataset: tinystories
+max_docs: 2000
+# Short configurable research/smoke runs (override with --max-iters).
+max_iters: 200
+batch_size: 1
+grad_accum: 8
+lr: 3.0e-4
+warmup_iters: 20
+min_lr: 3.0e-5
+weight_decay: 0.1
+grad_clip: 1.0
+log_interval: 10
+eval_interval: 50
+eval_iters: 5
+ckpt_interval: 100
+# Prefer MPS; trainer falls back to CPU with an explicit log if MPS is missing.
+device: mps
+# FP32 is the supported/default path for this profile. Do not enable bf16/fp16
+# autocast here — this repo has no tested MPS mixed-precision path.
+dtype: float32
+seed: 1337
+out_dir: results/local_16gb_w768
+# Research profile: never silently substitute the bundled smoke corpus.
+allow_dataset_fallback: false

@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Training artifacts
+results/*
+!results/pilot_cost.json
+!results/pilot_cost_smoke.json
+checkpoints/
+*.pt
+*.bin
+wandb/
+runs/
+
+# Data caches
+data/cache/
+data/tinystories/
+data/fineweb/
+data/fineweb_edu_100m/
+.cache/
+
+# Editor
+.idea/
+.vscode/
+*.swp
+.DS_Store

@@ -1,0 +1,28 @@
+# Designed single-GPU pretrain recipe. Documented, not executed in this pass.
+# Use scripts/estimate_cost.py (fed by a pilot) before running this.
+scale: full
+dataset: fineweb-edu
+max_docs: null
+tokens_budget: 3000000000
+max_iters: null
+batch_size: 8
+grad_accum: 8
+lr: 3.0e-4
+warmup_iters: 200
+min_lr: 3.0e-5
+weight_decay: 0.1
+grad_clip: 1.0
+log_interval: 20
+eval_interval: 500
+eval_iters: 20
+ckpt_interval: 1000
+device: auto
+dtype: bfloat16
+seed: 1337
+out_dir: results/full_single_gpu
+# Comparative / research recipe — never silently fall back to smoke corpus.
+allow_dataset_fallback: false
+notes: >
+  Target: one 24-80GB GPU, ~100-150M active parameters, FineWeb-Edu,
+  context 1024, about 2-5B tokens depending on the cost estimate.
+  Match active params and tokens across variants, not total params.

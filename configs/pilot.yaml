@@ -1,0 +1,23 @@
+# Short run of the *full* 150M-class shapes to measure tok/s and memory.
+# Not a pretrain. Do not raise max_iters into the Chinchilla regime here.
+scale: full
+dataset: fineweb-edu
+max_docs: 200
+max_iters: 30
+batch_size: 1
+grad_accum: 1
+lr: 3.0e-4
+warmup_iters: 5
+min_lr: 3.0e-5
+weight_decay: 0.1
+grad_clip: 1.0
+log_interval: 5
+eval_interval: 30
+eval_iters: 2
+ckpt_interval: 1000
+device: auto
+dtype: auto
+seed: 1337
+out_dir: results/pilot
+# Research/comparative short pilot — do not silently substitute smoke corpus.
+allow_dataset_fallback: false
